@@ -17,7 +17,7 @@ import re
 
 class Agent_Zork:
 
-	def __init__(self, args):
+	def __init__(self, args, model_name=None, index_file_name=None):
 
 		self.data = Walkthrough_Dataset(args["walkthrough_filename"], args["rom_path"], args["spm_path"])
 		self.binding = jericho.load_bindings(args["rom_path"])
@@ -26,13 +26,20 @@ class Agent_Zork:
 		self.batch_size = args["batch_size"]
 		self.num_epochs = args["num_epochs"]
 
-		shuffled_idxs = list(range(len(self.data)))
-		random.shuffle(shuffled_idxs)
-		train_idx_end = int(0.75 * len(self.data))
-		val_idx_end = int(0.875 * len(self.data))
-		self.train_data = self.data.split(shuffled_idxs[:train_idx_end])
-		self.val_data = self.data.split(shuffled_idxs[train_idx_end:val_idx_end])
-		self.test_data = self.data.split(shuffled_idxs[val_idx_end:])
+		if index_file_name == None:
+			shuffled_idxs = list(range(len(self.data)))
+			random.shuffle(shuffled_idxs)
+			train_idx_end = int(0.75 * len(self.data))
+			val_idx_end = int(0.875 * len(self.data))
+			self.train_data = self.data.split(shuffled_idxs[:train_idx_end])
+			self.val_data = self.data.split(shuffled_idxs[train_idx_end:val_idx_end])
+			self.test_data = self.data.split(shuffled_idxs[val_idx_end:])
+			self.dump_indices("data_indices", shuffled_idxs[:train_idx_end], shuffled_idxs[train_idx_end:val_idx_end], shuffled_idxs[val_idx_end:])
+		else:
+			train_idxs, val_idxs, test_idxs = self.load_indices(index_file_name)
+			self.train_data = self.data.split(train_idxs)
+			self.val_data = self.data.split(val_idxs)
+			self.test_data = self.data.split(test_idxs)
 
 		model_args = {
 			"embedding_size": args["embedding_size"],
@@ -44,7 +51,10 @@ class Agent_Zork:
 			"batch_size": args["batch_size"]
 		}
 		self.model = BasicModel(model_args)
-		self.optimizer = optim.Adam(self.model.parameters(), lr=args["learning_rate"])
+		self.optimizer = optim.Adam(self.model.parameters(), lr=args["learning_rate"]) 
+
+		if model_name != None:
+			self.model.load_state_dict(torch.load(model_name))
 
 	def train(self):
 
@@ -72,7 +82,7 @@ class Agent_Zork:
 
 		for epoch in range(self.num_epochs):
 
-			self.find_validation_accuracy(epoch)
+			self.find_accuracy(self.val_data, epoch)
 
 			for (states, instructions), actions in train_dataloader:
 
@@ -103,13 +113,12 @@ class Agent_Zork:
 				o1_loss = update(torch.tensor(o1_indices_to_use, dtype=torch.long), o1_idxs, q_o1s, o1_criterion)
 				o2_loss = update(torch.tensor(o2_indices_to_use, dtype=torch.long), o2_idxs, q_o2s, o2_criterion)
 
-			if epoch % 50 == 0:
+			if epoch % 50 == 0 and epoch != 0:
 				torch.save(self.model.state_dict(), "basic_model.pt")
 
-		self.find_validation_accuracy(self.num_epochs)
+		self.find_accuracy(self.val_data, self.num_epochs)
 
-
-	def find_validation_accuracy(self, epoch=-1):
+	def find_accuracy(self, data, epoch=-1):
 
 		criterion = nn.NLLLoss()
 
@@ -142,13 +151,13 @@ class Agent_Zork:
 		o1_losses = []
 		o2_losses = []
 
-		for i in range(len(self.val_data)):
-			(state, instruction), action = self.val_data[i]
+		for i in range(len(data)):
+			(state, instruction), action = data[i]
 			template_truth, o1_truth, o2_truth = self.identify_components(action)
 			reconstruction = self.template_to_string(template_truth, o1_truth, o2_truth)
 
 			if reconstruction == action:
-				template_guess, o1_guess, o2_guess, t_prob, o1_prob, o2_prob = self.model.act(state.unsqueeze(dim=0), instruction.unsqueeze(dim=0))
+				template_guess, o1_guess, o2_guess, t_prob, o1_prob, o2_prob = self.model.eval(state.unsqueeze(dim=0), instruction.unsqueeze(dim=0))
 				object_count = self.template_generator.templates[template_truth].count("OBJ")
 				correct_templates, total_templates = update(True, correct_templates, total_templates, template_guess, template_truth)
 				correct_o1, total_o1 = update(object_count >= 1, correct_o1, total_o1, o1_guess, o1_truth)
@@ -200,6 +209,40 @@ class Agent_Zork:
 		reverse = {vocab[w]: w for w in vocab}
 		return vocab, reverse
 
+	def load_indices(self, file_path):
+		train_idxs = []
+		val_idxs = []
+		test_idxs = []
+		with open(file_path) as f:
+			current = ""
+			for line in f.readlines():
+				if "train" in line or "val" in line or "test" in line:
+					current = line.strip(" \n:")
+					continue
+				if current == "train":
+					train_idxs.append(int(line.strip(" \n")))
+				elif current == "val":
+					val_idxs.append(int(line.strip(" \n")))
+				elif current == "test":
+					test_idxs.append(int(line.strip(" \n")))
+		return train_idxs, val_idxs, test_idxs
+
+	def dump_indices(self, file_path, train_idxs, val_idxs, test_idxs):
+
+		with open(file_path, "w") as f:
+			print("train", file=f)
+			for idx in train_idxs:
+				print(idx, file=f)
+
+			print("val", file=f)
+			for idx in val_idxs:
+				print(idx, file=f)
+
+			print("test", file=f)
+			for idx in test_idxs:
+				print(idx, file=f)
+
+
 if __name__ == "__main__":
 
 
@@ -214,10 +257,10 @@ if __name__ == "__main__":
 		"batch_size": 16,
 		"learning_rate": 0.0005,
 		"num_samples": 512,
-		"num_epochs": 300,
+		"num_epochs": 8,
 	}
 
-	agent = Agent_Zork(args)
+	agent = Agent_Zork(args, index_file_name="data_indices")
 	agent.train()
 
 

@@ -17,9 +17,10 @@ class BasicModel(nn.Module):
 		self.instruction_encoder = Instruction_Encoder(args["embedding_size"], args["hidden_size"])
 		self.state_encoder = State_Encoder(args["embedding_size"], args["hidden_size"])
 
-		self.t_scorer = nn.Linear(args["hidden_size"] * 4, args["template_size"])
-		self.o1_scorer = nn.Linear(args["hidden_size"] * 4, args["output_vocab_size"])
-		self.o2_scorer = nn.Linear(args["hidden_size"] * 4, args["output_vocab_size"])
+		self.t_scorer = nn.Linear(args["hidden_size"] * 6, args["template_size"])
+		self.o1_scorer = nn.Linear((args["hidden_size"] * 6) + args["template_size"], args["output_vocab_size"])
+		self.o2_scorer = nn.Linear((args["hidden_size"] * 6) + args["template_size"] + args["output_vocab_size"], args["output_vocab_size"])
+
 
 	def forward(self, state, instruction):
 
@@ -29,12 +30,12 @@ class BasicModel(nn.Module):
 		full_input = torch.cat([encoded_instruction, encoded_state], dim=1)
 
 		q_t = self.t_scorer(full_input)
-		q_o1 = self.o1_scorer(full_input)
-		q_o2 = self.o2_scorer(full_input)
+		q_o1 = self.o1_scorer(torch.cat([full_input, q_t], dim=1))
+		q_o2 = self.o2_scorer(torch.cat([full_input, q_o1, q_t], dim=1))
 
 		return F.log_softmax(q_t, dim=1), F.log_softmax(q_o1, dim=1), F.log_softmax(q_o2, dim=1)
 
-	def act(self, state, instruction):
+	def eval(self, state, instruction):
 		with torch.no_grad():
 			t_prob, o1_prob, o2_prob = self.forward(state, instruction)
 			t, o1, o2 = torch.argmax(t_prob, dim=1).item(), torch.argmax(o1_prob, dim=1).item(), torch.argmax(o2_prob, dim=1).item()
@@ -82,14 +83,37 @@ class Instruction_Encoder(nn.Module):
 
 		super(Instruction_Encoder, self).__init__()
 		self.encoder = nn.LSTM(embedding_size, hidden_size, bidirectional=True)
+		self.attention = nn.Linear(hidden_size * 4, 1)
 
 	def forward(self, instruction):
 
 		temp_instruction = instruction.squeeze(dim=1).permute(1, 0, 2)
 		output, _ = self.encoder(temp_instruction)
-		return output[-1, :, :]
+		attended_output = self.apply_attention(output)
+		return torch.cat([output[-1, :, :], attended_output], dim=1)
+
+	def apply_attention(self, encoder_outputs):
+
+		sequence_length, batch_size, encoded_size = encoder_outputs.size()
+		final_vector = encoder_outputs[-1, :, :]
+
+		def attend(encoder_output):
+			attention_input = torch.cat([final_vector, encoder_output], dim=1)
+			return self.attention(attention_input)
+
+		weights = attend(encoder_outputs[0, :, :])
+		for i in range(1, sequence_length):
+			attention_for_this_word = attend(encoder_outputs[i, :, :])
+			weights = torch.cat([weights, attention_for_this_word], dim=1)
+
+		normalized_weights_tensor = F.softmax(weights, dim=1)
+
+		attention_applied = torch.bmm(normalized_weights_tensor.unsqueeze(dim=1), encoder_outputs.permute(1, 0, 2))
+
+		# attention_applied should be batch, hidden_size * 2
+		return attention_applied.squeeze(dim=1)
 
 	def flatten_parameters(self):
-
 		self.encoder.flatten_parameters()
+
 
