@@ -17,21 +17,29 @@ class BasicModel(nn.Module):
 		self.instruction_encoder = Instruction_Encoder(args["embedding_size"], args["hidden_size"])
 		self.state_encoder = State_Encoder(args["embedding_size"], args["hidden_size"])
 
-		self.t_scorer = nn.Linear(args["hidden_size"] * 6, args["template_size"])
-		self.o1_scorer = nn.Linear((args["hidden_size"] * 6) + args["template_size"], args["output_vocab_size"])
-		self.o2_scorer = nn.Linear((args["hidden_size"] * 6) + args["template_size"] + args["output_vocab_size"], args["output_vocab_size"])
+		self.t_scorer = Scorer(args["hidden_size"] * 4, args["template_size"], args["hidden_size"])
+		self.o1_scorer = Scorer((args["hidden_size"] * 4) + args["template_size"], args["output_vocab_size"], args["hidden_size"])
+		self.o2_scorer = Scorer((args["hidden_size"] * 4) + args["template_size"] + args["output_vocab_size"], args["output_vocab_size"], args["hidden_size"])
+
+		#self.t_scorer = nn.Linear(args["hidden_size"] * 6, args["template_size"])
+		#self.o1_scorer = nn.Linear((args["hidden_size"] * 6) + args["template_size"], args["output_vocab_size"])
+		#self.o2_scorer = nn.Linear((args["hidden_size"] * 6) + args["template_size"] + args["output_vocab_size"], args["output_vocab_size"])
 
 
 	def forward(self, state, instruction):
 
-		encoded_instruction = self.instruction_encoder(self.embeddings(instruction))
+		encoded_instruction, full_instruction_encoder_output = self.instruction_encoder(self.embeddings(instruction))
 		encoded_state = self.state_encoder(self.embeddings(state))
 
-		full_input = torch.cat([encoded_instruction, encoded_state], dim=1)
+		#full_input = torch.cat([encoded_instruction, encoded_state], dim=1)
 
-		q_t = self.t_scorer(full_input)
-		q_o1 = self.o1_scorer(torch.cat([full_input, q_t], dim=1))
-		q_o2 = self.o2_scorer(torch.cat([full_input, q_o1, q_t], dim=1))
+		#q_t = self.t_scorer(full_input)
+		#q_o1 = self.o1_scorer(torch.cat([full_input, q_t], dim=1))
+		#q_o2 = self.o2_scorer(torch.cat([full_input, q_o1, q_t], dim=1))
+
+		q_t = self.t_scorer(full_instruction_encoder_output, encoded_state)
+		q_o1 = self.o1_scorer(full_instruction_encoder_output, encoded_state, [q_t])
+		q_o2 = self.o2_scorer(full_instruction_encoder_output, encoded_state, [q_t, q_o1])
 
 		return F.log_softmax(q_t, dim=1), F.log_softmax(q_o1, dim=1), F.log_softmax(q_o2, dim=1)
 
@@ -87,10 +95,37 @@ class Instruction_Encoder(nn.Module):
 
 	def forward(self, instruction):
 
+		"""
 		temp_instruction = instruction.squeeze(dim=1).permute(1, 0, 2)
 		output, _ = self.encoder(temp_instruction)
 		attended_output = self.apply_attention(output)
 		return torch.cat([output[-1, :, :], attended_output], dim=1)
+		"""
+		temp_instruction = instruction.squeeze(dim=1).permute(1, 0, 2)
+		output, _ = self.encoder(temp_instruction)
+		return output[-1, :, :], output
+
+	def flatten_parameters(self):
+		self.encoder.flatten_parameters()
+
+class Scorer(nn.Module):
+
+	def __init__(self, input_size, output_size, hidden_size):
+
+		super(Scorer, self).__init__()
+
+		self.attention = nn.Linear(hidden_size * 4, 1)
+		self.linear_scorer = nn.Linear(input_size, output_size)
+
+	def forward(self, full_instruction_encoder_output, state, other=[]):
+
+		attended_instruction = self.apply_attention(full_instruction_encoder_output)
+
+		full_input = torch.cat([attended_instruction, state], dim=1)
+		for other_vec in other:
+			full_input = torch.cat([full_input, other_vec], dim=1)
+
+		return self.linear_scorer(full_input)
 
 	def apply_attention(self, encoder_outputs):
 
@@ -113,7 +148,6 @@ class Instruction_Encoder(nn.Module):
 		# attention_applied should be batch, hidden_size * 2
 		return attention_applied.squeeze(dim=1)
 
-	def flatten_parameters(self):
-		self.encoder.flatten_parameters()
+
 
 
