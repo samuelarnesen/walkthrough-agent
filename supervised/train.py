@@ -8,11 +8,12 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from torch.autograd import Variable
-from torch.utils.data import DataLoader, RandomSampler
+from torch.utils.data import DataLoader, WeightedRandomSampler, SequentialSampler
 
 import numpy as np
-import random
-import re
+#from sklearn.manifold import TSNE
+#import matplotlib.pyplot as plt
+import random, re, math
 
 
 class Agent_Zork:
@@ -77,7 +78,8 @@ class Agent_Zork:
 		o1_criterion = nn.NLLLoss()
 		o2_criterion = nn.NLLLoss()
 
-		train_sampler = RandomSampler(self.train_data)
+		#train_sampler = RandomSampler(self.train_data)
+		train_sampler = WeightedRandomSampler(self.get_weights(self.train_data), num_samples=len(self.train_data))
 		train_dataloader = DataLoader(self.train_data, batch_size=self.batch_size, sampler=train_sampler, drop_last=True)
 
 		for epoch in range(self.num_epochs):
@@ -85,8 +87,6 @@ class Agent_Zork:
 			self.find_accuracy(self.val_data, epoch)
 
 			for (states, instructions), actions in train_dataloader:
-
-				q_ts, q_o1s, q_o2s = self.model(states, instructions)
 
 				t_indices_to_use = []
 				o1_indices_to_use = []
@@ -109,16 +109,45 @@ class Agent_Zork:
 						if object_count >= 2:
 							o2_indices_to_use.append(i)
 
+				q_ts, q_o1s, q_o2s = self.model(states, instructions)
+
 				template_loss = update(torch.tensor(t_indices_to_use, dtype=torch.long), template_idxs, q_ts, t_criterion)
 				o1_loss = update(torch.tensor(o1_indices_to_use, dtype=torch.long), o1_idxs, q_o1s, o1_criterion)
 				o2_loss = update(torch.tensor(o2_indices_to_use, dtype=torch.long), o2_idxs, q_o2s, o2_criterion)
+
+				print(epoch, "\t", template_loss, "\t", o1_loss, "\t", o2_loss)
 
 			if epoch % 50 == 0 and epoch != 0:
 				torch.save(self.model.state_dict(), "basic_model.pt")
 
 		self.find_accuracy(self.val_data, self.num_epochs)
+		torch.save(self.model.state_dict(), "basic_model.pt")
 
-	def find_accuracy(self, data, epoch=-1):
+	def get_weights(self, data):
+
+		sequential_sampler = SequentialSampler(data)
+		base_dataloader = DataLoader(data, batch_size=1, sampler=sequential_sampler, drop_last=False)
+
+		frequencies = np.zeros(len(self.template_generator.templates))
+		for _, action in base_dataloader:
+
+			template_idx, o1_idx, o2_idx = self.identify_components(action[0])
+			reconstruction = self.template_to_string(template_idx, o1_idx, o2_idx)
+			if reconstruction == action[0]:
+				frequencies[template_idx] += 1
+
+		weights = np.zeros(len(data))
+		for i, (_, action) in enumerate(base_dataloader):
+
+			template_idx, o1_idx, o2_idx = self.identify_components(action[0])
+			reconstruction = self.template_to_string(template_idx, o1_idx, o2_idx)
+			if reconstruction == action[0]:
+				if frequencies[template_idx] > 0:
+					weights[i] = 1 / math.sqrt(frequencies[template_idx])
+
+		return weights
+
+	def find_accuracy(self, data, epoch=-1, print_examples=False):
 
 		criterion = nn.NLLLoss()
 
@@ -151,28 +180,54 @@ class Agent_Zork:
 		o1_losses = []
 		o2_losses = []
 
+		template_counts = np.zeros(len(self.template_generator.templates))
+		ranks = []
+
 		for i in range(len(data)):
 			(state, instruction), action = data[i]
 			template_truth, o1_truth, o2_truth = self.identify_components(action)
 			reconstruction = self.template_to_string(template_truth, o1_truth, o2_truth)
 
 			if reconstruction == action:
+
 				template_guess, o1_guess, o2_guess, t_prob, o1_prob, o2_prob = self.model.eval(state.unsqueeze(dim=0), instruction.unsqueeze(dim=0))
-				object_count = self.template_generator.templates[template_truth].count("OBJ")
-				correct_templates, total_templates = update(True, correct_templates, total_templates, template_guess, template_truth)
-				correct_o1, total_o1 = update(object_count >= 1, correct_o1, total_o1, o1_guess, o1_truth)
-				correct_o2, total_o2 = update(object_count >= 2, correct_o2, total_o2, o2_guess, o2_truth)
+				if print_examples:
 
-				t_losses = get_loss(True, t_losses, t_prob, template_truth)
-				o1_losses = get_loss(object_count >= 1, o1_losses, o1_prob, o1_truth)
-				o2_losses = get_loss(object_count >= 2, o2_losses, o2_prob, o2_truth)
+					t_prob_list = []
+					for i, template in enumerate(self.template_generator.templates):
+						t_prob_list.append(t_prob[0, i].item())
+					sorted_ts = list(reversed(sorted(t_prob_list)))
 
-		if epoch >= 0:
-			print("EPOCH", epoch)
-		print("\tTemplates: \n\t\tAccuracy: ", correct_templates, "/", total_templates, "\n\t\tLoss", get_average_loss(t_losses))
-		print("\tObject 1: \n\t\tAccuracy: ", correct_o1, "/", total_o1, "\n\t\tLoss", get_average_loss(o1_losses))
-		print("\tObject 2: \n\t\tAccuracy", correct_o2, "/", total_o2, "\n\t\tLoss", get_average_loss(o2_losses))
-		print()
+					rank = -1
+					for i, score in enumerate(sorted_ts):
+						if t_prob[0, template_truth].item() == score:
+							rank = i + 1
+
+					print(self.template_to_string(template_guess, o1_guess, o2_guess), "\t", reconstruction, "\t", rank)
+					ranks.append(rank)
+
+					if template_counts[template_truth] == 0:
+						template_counts[template_truth] = 1
+
+				else:
+					object_count = self.template_generator.templates[template_truth].count("OBJ")
+					correct_templates, total_templates = update(True, correct_templates, total_templates, template_guess, template_truth)
+					correct_o1, total_o1 = update(object_count >= 1, correct_o1, total_o1, o1_guess, o1_truth)
+					correct_o2, total_o2 = update(object_count >= 2, correct_o2, total_o2, o2_guess, o2_truth)
+
+					t_losses = get_loss(True, t_losses, t_prob, template_truth)
+					o1_losses = get_loss(object_count >= 1, o1_losses, o1_prob, o1_truth)
+					o2_losses = get_loss(object_count >= 2, o2_losses, o2_prob, o2_truth)
+
+		if not print_examples:
+			if epoch >= 0:
+				print("\nEPOCH", epoch)
+			print("\tTemplates: \n\t\tAccuracy: ", correct_templates, "/", total_templates, "\n\t\tLoss", get_average_loss(t_losses))
+			print("\tObject 1: \n\t\tAccuracy: ", correct_o1, "/", total_o1, "\n\t\tLoss", get_average_loss(o1_losses))
+			print("\tObject 2: \n\t\tAccuracy", correct_o2, "/", total_o2, "\n\t\tLoss", get_average_loss(o2_losses))
+			print()
+		else:
+			print(np.mean(np.asarray(ranks)), "/", np.sum(template_truth))
 
 
 	def identify_components(self, action):
@@ -257,11 +312,12 @@ if __name__ == "__main__":
 		"batch_size": 16,
 		"learning_rate": 0.0005,
 		"num_samples": 512,
-		"num_epochs": 8,
+		"num_epochs": 80,
 	}
 
-	agent = Agent_Zork(args, index_file_name="data_indices")
-	agent.train()
+	agent = Agent_Zork(args, model_name="basic_model.pt", index_file_name="data_indices")
+	#agent.train()
+	agent.find_accuracy(agent.train_data, print_examples=True)
 
 
 
