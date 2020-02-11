@@ -175,7 +175,6 @@ class Walkthrough_Dataset(Dataset):
 				self.sp.Load(spm_path)
 				self.states = self.convert_batch_to_tokens(self.states, 200)
 				self.instructions = self.convert_batch_to_tokens(self.instructions, 400)
-				#self.actions = self.convert_batch_to_tokens(self.actions, 15)
 
 
 	def __getitem__(self, index):
@@ -183,6 +182,7 @@ class Walkthrough_Dataset(Dataset):
 
 	def __len__(self):
 		return len(self.states)
+
 
 	def split(self, indices):
 		split_wtd = Walkthrough_Dataset()
@@ -211,6 +211,9 @@ class Walkthrough_Dataset(Dataset):
 
 	def get_vocab_size(self):
 		return len(self.sp)
+
+	def tokenize_sentence(self, sentence):
+		return self.sp.encode_as_ids(sentence)
 
 
 

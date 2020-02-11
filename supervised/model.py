@@ -43,7 +43,7 @@ class BasicModel(nn.Module):
 		self.instruction_encoder.flatten_parameters()
 
 	def get_embedding(self, idx):
-		return self.embeddings[idx]
+		return self.embeddings(torch.tensor(idx, dtype=torch.long))
 
 class State_Encoder(nn.Module):
 
@@ -105,7 +105,7 @@ class Scorer(nn.Module):
 
 	def forward(self, full_instruction_encoder_output, state, other=[]):
 
-		attended_instruction = self.apply_attention(full_instruction_encoder_output)
+		attended_instruction = self.apply_attention(full_instruction_encoder_output, state)
 
 		full_input = torch.cat([attended_instruction, state], dim=1)
 		for other_vec in other:
@@ -113,25 +113,21 @@ class Scorer(nn.Module):
 
 		return self.linear_scorer(full_input)
 
-	def apply_attention(self, encoder_outputs):
+	def apply_attention(self, encoder_outputs, state):
 
 		sequence_length, batch_size, encoded_size = encoder_outputs.size()
-		final_vector = encoder_outputs[-1, :, :]
 
 		def attend(encoder_output):
-			attention_input = torch.cat([final_vector, encoder_output], dim=1)
+			attention_input = torch.cat([state, encoder_output], dim=1)
 			return self.attention(attention_input)
 
 		weights = attend(encoder_outputs[0, :, :])
 		for i in range(1, sequence_length):
 			attention_for_this_word = attend(encoder_outputs[i, :, :])
 			weights = torch.cat([weights, attention_for_this_word], dim=1)
-
 		normalized_weights_tensor = F.softmax(weights, dim=1)
 
 		attention_applied = torch.bmm(normalized_weights_tensor.unsqueeze(dim=1), encoder_outputs.permute(1, 0, 2))
-
-		# attention_applied should be batch, hidden_size * 2
 		return attention_applied.squeeze(dim=1)
 
 

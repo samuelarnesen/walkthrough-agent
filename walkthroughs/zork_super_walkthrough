@@ -86,7 +86,7 @@ Turn off the lantern (to conserve it). Go south, then north to the clearing, the
 >put gold in case
 >put sceptre in case
 
-Once again, open the trap door, turn on the lantern, and go down. To reach the dam, go north, east, north, northeast, east. Go north to the Lobby and take the matches, then go north/east into the Maintenance Room. Get the wrench and screwdriver, then push the yellow button. Go back to the dam (south, south), turn the bolt with the wrench, then drop the wrench.
+Once again, open the trap door, turn on the lantern, and go down. To reach the dam, go north, east, north, northeast, east. Go north to the Lobby and take the matches, then go north into the Maintenance Room. Get the wrench and screwdriver, then push the yellow button. Go back to the dam (south, south), turn the bolt with the wrench, then drop the wrench.
 
 >open trap door
 >turn on lamp
@@ -107,7 +107,7 @@ Once again, open the trap door, turn on the lantern, and go down. To reach the d
 >turn bolt with wrench
 >drop wrench
 
-Go south and then down into the Loud Room (you may end up running to somewhere near here... good luck!). Go down, west, down, southeast and east to get back to the Dome room. Go down your rope, then turn off your lantern and get the torch. Head south, taking the bell, towards the altar. Get the candles and book from the altar, then go down through the hole. Go down again to the Entrance to Hades. Ring the bell, and you will drop both it and the candles. Get the candles, light a match and light the candles with the match. Read the book to exorcise the demons, then go south, get the skull, and go back north. Go back up to the cave, then north to the mirror room. Put out your candles and inventory. Rub the mirror to teleport to another mirror room to the north. Go north, west, north and west into the Squeaky room. Check inventory before going north into the Bat room (hope you have the garlic!).
+Go south and then down into the Loud Room (you may end up running to somewhere near here... good luck!). Go west, down, southeast and east to get back to the Dome room. Go down your rope, then get the torch and turn off your lantern. Head south, taking the bell, towards the altar. Get the candles and book from the altar, then go down through the hole. Go down again to the Entrance to Hades. Ring the bell, and you will drop both it and the candles. Get the candles, light a match and light the candles with the match. Read the book to exorcise the demons, then go south, get the skull, and go back north. Go back up to the cave. Put out your candles and inventory. Head north to the mirror room and rub the mirror to teleport to another mirror room to the north. Go north, west, north and west into the Squeaky room. Check inventory before going north into the Bat room (hope you have the garlic!).
 
 >go south
 >go down
@@ -146,7 +146,7 @@ Go south and then down into the Loud Room (you may end up running to somewhere n
 >inventory
 >go north
 
-Head east into the Shaft room. Put the torch into the basket and light your lantern. Go north, down, east, northeast, southeast, southwest, down (top of ladder), down and south. Get the coal, then go back to the top of the ladder (north, up). From here, go up, north, east, south and north to get back to the Gas room. Go up, then south to the Shaft room. Put the coal and screwdriver in the basket, then lower the basket. Make your way back to the top of the ladder, then go down and west into the Timber room. Drop everything and squeeze through the crack to the west. Get the screwdriver, coal and torch, then head south into the Machine room. Open the lid, put the coal in the machine, close the lid, and turn the switch with the screwdriver. Drop the screwdriver, open the lid and take the diamond. Go north and put the diamond and torch in the basket. Squeeze back to the east and get the skull, lantern and garlic (you can leave everything else here). Head east and up to the top of the ladder, then back through the maze to the Gas room. Pick up the bracelet, then continue up and south to the Shaft room. Get the torch and diamond (after raising the basket), wait, turn off your lantern, and go west. Take the jade and go south, east and south to the Slide room. Go down the slide, then up and you are back in the kitchen. Check inventory. Put your treasure in the case.
+Head east into the Shaft room. Put the torch into the basket and light your lantern. Go north, down, east, northeast, southeast, southwest, down (top of ladder), down and south. Get the coal, then go back to the top of the ladder (north, up). From here, go up, north, east, south and north to get back to the Gas room. Go up, then south to the Shaft room. Put the coal and screwdriver in the basket, then lower the basket. Make your way back to the top of the ladder, then go down, east, northeast, southeast, southwest, down, down, and west. Drop everything and squeeze through the crack to the west. Get the screwdriver, coal and torch, then head south into the Machine room. Open the lid, put the coal in the machine, close the lid, and turn the switch with the screwdriver. Drop the screwdriver, open the lid and take the diamond. Go north and put the diamond and torch in the basket. Squeeze back to the east and get the skull, lantern and garlic (you can leave everything else here). Head east and up to the top of the ladder, then back through the maze to the Gas room. Pick up the bracelet, then continue up and south to the Shaft room. Get the torch and diamond (after raising the basket), wait, turn off your lantern, and go west. Take the jade and go south, east and south to the Slide room. Go down the slide, then up and you are back in the kitchen. Check inventory. Put your treasure in the case.
 
 >go east
 >put torch in basket
@@ -184,8 +184,8 @@ Head east into the Shaft room. Put the torch into the basket and light your lant
 >go west
 >drop all
 >go west
->take coal
 >take screwdriver
+>take coal
 >take torch
 >go south
 >open lid
@@ -196,8 +196,8 @@ Head east into the Shaft room. Put the torch into the basket and light your lant
 >open lid
 >take diamond
 >go north
->put torch in basket
 >put diamond in basket
+>put torch in basket
 >go east
 >take skull
 >take lamp
@@ -270,15 +270,15 @@ Turn on the lantern and go down yet again. Go north, east, north and northeast t
 >take shovel
 >go northeast
 
-Dig until you find the scarab. Drop the shovel and take the scarab, then go back southwest. Drop the buoy and open it - take the emerald. Continue south twice to Aragain Falls and cross the rainbow. Turn off the lantern and go southwest to the Canyon Bottom. Head back to the house (up, up, northwest, west, west, west). Inventory and put your treasures in the case.
+Dig until you find the scarab. Drop the shovel and take the scarab, then go back southwest. Drop the buoy and open it - take the emerald and garlic. Continue south twice to Aragain Falls and cross the rainbow. Turn off the lantern and go southwest to the Canyon Bottom. Head back to the house (up, up, northwest, west, west, west). Inventory and put your treasures in the case.
 
 >dig
 >sand
 >dig sand
 >dig sand
 >dig sand
->take scarab
 >drop shovel
+>take scarab
 >go southwest
 >open buoy
 >take emerald
@@ -292,7 +292,7 @@ Dig until you find the scarab. Drop the shovel and take the scarab, then go back
 >go up
 >go northwest
 >go west
->enter house
+>go west
 >go west
 >inventory
 >put emerald in case
@@ -300,7 +300,7 @@ Dig until you find the scarab. Drop the shovel and take the scarab, then go back
 >put trident in case
 >put jewels in case
 
-Go east twice then north twice. Climb up the tree, take the egg, and climb down again. Go back to the living room (south, east, west, west) but don't put the egg in the case. Instead, head down into the cellar (turn on the lantern) and go north into the Troll room. Go west, south, east and up, then take the coins and the skeleton key. From here, go southwest, east, south, and southeast to get to the Cyclops room. Just type "Ulysses" or "Odysseus" to get rid of the cyclops and create a new passage straight into the living room - don't go there yet... Go upstairs to reach the Treasure room - the thief's lair. Give him the egg to keep him distracted for a while. Go down, east, east and put the coins in the case. Get the nasty knife and go back west, west.
+Go east twice then north twice. Climb up the tree, take the egg, and climb down again. Go back to the living room (south, east, west, west) but don't put the egg in the case. Instead, head down into the cellar (turn on the lantern) and go north into the Troll room. Go west, south, east and up, then take the coins and the skeleton key. From here, go southwest, east, south, take inventory, and then southeast to get to the Cyclops room. Just type "Ulysses" or "Odysseus" to get rid of the cyclops and create a new passage straight into the living room - don't go there yet... Go upstairs to reach the Treasure room - the thief's lair. Give him the egg to keep him distracted for a while. Go down, east, east and put the coins in the case. Get the nasty knife and go back west, west.
 
 >go east
 >go east
@@ -311,7 +311,7 @@ Go east twice then north twice. Climb up the tree, take the egg, and climb down 
 >climb down
 >go south
 >go east
->enter house
+>go west
 >go west
 >turn on lamp
 >go down
@@ -338,7 +338,7 @@ Go east twice then north twice. Climb up the tree, take the egg, and climb down 
 >go west
 >go west
 
-Go upstairs and kill the thief with the knife. If you drop the knife, pick it up and keep killing the thief. Get all the treasure (including the egg - you may need to drop the stiletto and knife), then go down, northwest, south, west, up, down and northeast to get to the Grating room. Unlock and open the grate, then go up to the clearing. Turn off the lantern. Go south and climb the tree again. Take the canary out of the egg. Wind up the canary, and a songbird will drop a present for you. Climb down and take the bauble (you may need to drop the garlic), then return to the living room (south, east, west, west). Put all the treasure in the case.
+Go upstairs and kill the thief with the knife. If you drop the knife, pick it up and keep killing the thief. Get all the treasure (including the egg - you may need to drop the stiletto and knife), then go down, northwest, south, west, up, down and northeast to get to the Grating room. Unlock and open the grate, then go up to the clearing. Go south and climb the tree again. Wind up the canary, and a songbird will drop a present for you. Climb down and take the bauble (you may need to drop the garlic), then return to the living room (south, east, west, west). Put all the treasure in the case.
 
 >go up
 >kill thief with knife
@@ -370,7 +370,7 @@ Go upstairs and kill the thief with the knife. If you drop the knife, pick it up
 >take bauble
 >go south
 >go east
->enter house
+>go west
 >go west
 >put bauble in case
 >put chalice in case
@@ -380,7 +380,7 @@ Go upstairs and kill the thief with the knife. If you drop the knife, pick it up
 >put bracelet in case
 >put skull in case
 
-Go down into the cellar for the last time (after lighting the lantern). Go north and then east three times to reach the Loud room. Say "Echo" and you can take the platinum bar. Take it back to the living room (west, west, west, south, up) and put it in the case. Fetch the dropped torch by west, west, and up. Return to living room (down, east, east) and put the torch in the case. Assuming you have all the treasure, you will hear a voice. "Look", then take the map and read it. Return to the mailbox (east, east, south, west). Go southwest to the stone barrow and enter it to end the game.
+Go down into the cellar for the last time (after lighting the lantern). Go north and then east three times to reach the Loud room. Say "Echo" and you can take the platinum bar. Take it back to the living room (west, west, west, south, up) and put it in the case. Fetch the dropped torch by going west, west, and up. Return to living room (down, east, east) and put the torch in the case. Assuming you have all the treasure, you will hear a voice. "Look", then take the map and read it. Return to the mailbox (east, east, south, west). Go southwest to the stone barrow and enter it to end the game.
 
 >go down
 >go north

@@ -1,0 +1,690 @@
+##http://www.ifarchive.org/if-archive/solutions/Curses.step##
+
+drop biscuit
+drop paper
+south
+get parcel from cupboard
+unwrap parcel
+north
+north
+west
+south
+examine sheets
+turn wireless on
+push wireless north
+west
+give box of chocolates to jemima
+say yellow
+wait
+get gloves
+wear gloves
+east
+east
+east
+get wrench
+west
+south
+south
+southeast
+east
+examine rolls
+open torch
+empty torch
+get new battery
+put new battery in torch
+close torch
+south
+take sack
+north
+open door
+north
+get all
+turn handle
+south
+west
+west
+get flash
+east
+south
+west
+get wrench
+tighten joint
+get novel,poetry
+east
+north
+northwest
+get all from cupboard
+north
+close trapdoor
+get jewellery box
+open trapdoor
+north
+open demijohn
+get all from demijohn
+west
+west
+east
+east
+east
+turn wheel off
+turn wheel
+get medicine bottle
+put medicine bottle in shaft
+turn wheel
+enter dumb waiter
+get all
+pull ropes
+out
+mouse, south
+south
+mouse, west
+hole, w.w.w.n.w.n
+hole, s.e.s.e.e.e.e
+get key
+north
+enter dumb waiter
+pull ropes
+out
+wear gas mask
+north
+unlock door with brass key
+open door
+north
+remove gas mask
+read poetry
+west
+take handkerchief
+wave handkerchief
+west
+say time
+take poetry
+northwest
+west
+west
+get bottle,implement
+enter roller
+turn roller on
+e.e.e.w.n.n
+w.w.n.n.n.n
+w.w.w
+get out
+get etching
+enter roller
+e.e.e.s.s.s
+s.s.e.e.s.s
+get out
+southeast
+south
+south
+enter dumb waiter
+pull ropes
+out
+west
+south
+south
+southeast
+east
+north
+up
+northwest
+take gothic key
+throw wishbone at ghost
+southeast
+down
+put all in fireplace
+west
+down
+get all
+unlock hatch with brass key
+open hatch
+down
+east
+turn wheel off
+turn wheel
+enter dumb waiter
+pull ropes
+pull ropes
+out
+west
+south
+south
+southeast
+south
+south
+turn projector on
+get ace
+put ace in projector
+south
+examine cups
+pull anchor
+put ship in mounted bottle
+examine ship
+fore
+get branch
+aft
+up
+take flag
+port
+get flag,spar
+aft
+turn wheel
+down
+get ace
+north
+north
+east
+south
+push south wall
+south
+put flag on bed
+break windows
+south
+look under sill
+take gold key
+north
+lie on bed
+sleep
+east
+east
+east
+turn wheel
+pinch me
+get up
+north
+north
+west
+northwest
+north
+north
+east
+enter dumb waiter
+pull ropes
+pull ropes
+out
+north
+east
+east
+break frame
+unlock jewellery box with gold key
+open jewellery box
+take sketch,spar,clover
+wave spar
+wave clover
+open coffin
+put rods in coffin
+close lid
+open lid
+close lid
+open lid
+get rods from coffin
+southeast
+get sceptre
+up
+up
+look up 1420 in map
+turn door
+northeast
+push ball southwest
+push ball south
+get tarot box
+east
+break cabinet
+get all from cabinet
+get rod of returning
+strike it
+wait
+eat tablet
+get crook
+point rod of returning at me
+
+[ Now go to the souvenirs room ]
+
+get etching
+put it in projector
+south
+e.e.s.s.s.s
+e.e.e.e.e
+squeeze weed killer bottle
+w.w.w.w.w
+n.n.n.n.w.w
+take bean pole
+strike returning
+point it at me
+read poetry
+north
+open tarot box
+get eight,star,maiden
+up
+put eight on pack
+put maiden on pack
+put star on pack
+push bell
+say even
+north
+up
+get all cards
+down
+south
+west
+west
+say time
+south
+east
+east
+get stick,crook,staff
+wave stick
+wave crook
+wave staff
+put rods in coffin
+close lid
+open lid
+close lid
+open lid
+close lid
+open lid
+get all from coffin
+west
+west
+north
+northwest
+enter roller
+n.n.e.e.e
+get out
+get rose
+down
+strike rod of bronze
+point it at mural
+down
+get wrought iron key
+down
+smell
+smell
+down
+turn switch off
+up
+west
+strike rod of bronze
+point it at metal
+north
+slide i
+slide k
+slide c
+slide a
+slide n
+slide e
+slide l
+slide o
+slide s
+slide t
+south
+get rod of returning
+strike it
+point it at me
+
+[ Go to souvenirs room again ]
+
+get etching,maiden
+put maiden in projector
+south
+up
+east
+get fire,husbandry,luck
+strike rod of husbandry
+point it at goats
+south
+strike rod of fire
+point it at thorns
+south
+strike rod of luck
+point it at me
+south
+get coin
+southeast
+get stone
+southwest
+wake homer
+say agamemnon
+say ptolemy
+say yellow
+north
+northwest
+push dionysus southeast
+push dionysus southwest
+push poseidon northeast
+again
+push demeter southwest
+push demeter northwest
+southeast
+put stone in opening
+down
+get amber
+up
+south
+northeast
+northwest
+north
+north
+north
+east
+south
+give coin to bartender
+get ekmek
+north
+get fig
+west
+west
+southwest
+play syrinx
+put fig in urn
+oracle, hello
+
+[ Stop here to remember the number of paces in the Oracle's description ]
+
+northeast
+down
+give ekmek to andromeda
+wave hairband
+get rod of returning
+strike it
+point it at me
+
+[ Find the book of poetry which is somewhere up here ]
+[ Then go to attic ]
+
+east
+down
+down
+northeast
+east
+east
+get implement
+
+[ Now remember the numbers of paces (P,Q) the Oracle told you ]
+[ walk P paces east/west. walk Q paces north/south. dig ]
+[ Repeat the line above until you find the strongbox ]
+
+get box
+unlock it with gothic key
+open it
+west
+west
+southwest
+up
+up
+
+[ Find Austin the cat (somewhere in the attic) ]
+[ Now "push" him to the souvenirs room ]
+
+get maiden,sketch
+put sketch in projector
+jump
+south
+north
+drop smooth stone into grating
+
+[ Repeatedly "wait" until a wave splashes the smooth stone away ]
+
+south
+southeast
+southwest
+blow whistle
+put amber in socket
+get cloak
+wear it
+south
+north
+northeast
+northeast
+southeast
+south
+anoint me
+north
+southeast
+get spindle
+northwest
+wait
+get alpha, kappa, epic poem, short poem
+put epic poem in kappa
+put short poem in alpha
+east
+give kappa to callimachus
+south
+give alpha to apollonius
+get sash
+north
+west
+northwest
+north
+west
+get rusty key
+east
+south
+southwest
+southwest
+down
+lie on couch
+sleep
+lie on couch
+sleep
+lie on couch
+sleep
+lie on couch
+sleep
+z.z.z.z
+z.z.z.z
+w.w.w.w
+get up
+twist nose
+west
+west
+north
+east
+west
+take oak
+put sceptre in first socket
+
+[ Repeatedly "turn sceptre" until the number 'si' comes up ]
+
+get sceptre
+put sceptre in second socket
+
+[ Repeatedly "turn sceptre" until the coffin opens ]
+
+east
+east
+up
+northeast
+southeast
+remove cloak
+turn it
+wear it
+open door
+up
+put oak on table
+northwest
+northwest
+north
+unlock grating with rusty key
+open grating
+down
+get heart from boat
+up
+south
+southeast
+southwest
+down
+west
+west
+enter coffin
+close lid
+again
+up
+west
+west
+up
+up
+enter roller
+w.w.w.s.s
+get out
+east
+get orb
+west
+southeast
+south
+east
+east
+get featureless rod,spindle
+put featureless rod in coffin
+wave spindle
+put it in coffin
+get eight,bean pole
+wave eight
+put it in coffin
+wave bean pole
+put it in coffin
+close lid
+open lid
+close lid
+open lid
+close lid
+open lid
+close lid
+open lid
+get all from coffin
+west
+west
+north
+northwest
+east
+east
+mosaic, lagach
+mural, lagach
+still life, lagach
+north
+remove cloak
+turn it
+wear cloak
+northeast
+northeast
+north
+north
+remove cloak
+wear sash
+north
+northeast
+east
+south
+anoppe
+put astrolabe in mounting
+look through astrolabe
+get hand
+down
+down
+west
+
+[ Repeatedly "put skull on statue.turn it" until it works ]
+[ Repeatedly "put hand on statue.turn it" until it works ]
+
+put heart in statue
+get rod of fire,rod of ice
+strike rod of fire
+point it at knight
+point east
+east
+point east
+east
+give rose to knight
+show keepsake to knight
+point west
+west
+knight, open flagstone
+point down
+strike rod of ice
+point it at rod of life
+get rod of life
+again
+south
+south
+down
+northwest
+west
+west
+southeast
+south
+south
+enter dumb waiter
+pull ropes
+again
+out
+west
+unlock door with wrought iron key
+open door
+northwest
+polish orb
+get rod of sacrifice
+strike it
+point sacrifice at board
+get rods from sack
+put rods in socket
+get rods from sack
+put rods in socket
+get rods from sack
+put rods in socket
+get orb
+put it in opening
+strike rod of infinity
+point it at lemniscus
+west
+down
+swing rope
+get daisy
+wear it
+up
+east
+get torch
+northeast
+east
+south
+south
+east
+wear sandals
+west
+south
+north
+west
+open cover
+put torch in well
+down
+east
+z.z.z.z
+z.z.z.z
+west
+up
+z.z.z.z
+get pole
+east
+get stone
+wave pole
+strike it
+point it at me
+read poetry
+east
+down
+wave stone
+give note to man
+say carte
+up
+west
+west
+west
+say time
+get torch
+southeast
+east
+enter dumb waiter
+pull ropes
+again
+out
+west
+south
+down

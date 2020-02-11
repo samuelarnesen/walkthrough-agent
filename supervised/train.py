@@ -7,18 +7,19 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+import torch.nn.utils as utils
 from torch.autograd import Variable
 from torch.utils.data import DataLoader, WeightedRandomSampler, SequentialSampler
 
 import numpy as np
-#from sklearn.manifold import TSNE
+from sklearn.manifold import TSNE
 #import matplotlib.pyplot as plt
 import random, re, math
 
 
 class Agent_Zork:
 
-	def __init__(self, args, model_name=None, index_file_name=None):
+	def __init__(self, args, model_name=None, index_file_name=None, save_name="basic_model.pt"):
 
 		self.data = Walkthrough_Dataset(args["walkthrough_filename"], args["rom_path"], args["spm_path"])
 		self.binding = jericho.load_bindings(args["rom_path"])
@@ -26,6 +27,8 @@ class Agent_Zork:
 		self.vocab, self.reverse_vocab = self.load_vocab(args["rom_path"])
 		self.batch_size = args["batch_size"]
 		self.num_epochs = args["num_epochs"]
+		self.clip = args["clip"]
+		self.save_name = save_name
 
 		if index_file_name == None:
 			shuffled_idxs = list(range(len(self.data)))
@@ -69,22 +72,31 @@ class Agent_Zork:
 
 			self.optimizer.zero_grad()
 			loss = criterion(update_input, update_target)
+			if math.isnan(loss.item()):
+				return loss.item()
 			loss.backward(retain_graph=True)
+			utils.clip_grad_norm_(self.model.parameters(), self.clip)
 			self.optimizer.step()
 
 			return loss.item()
+
+		def get_one_hot_encoding(idxs, size, batch_size):
+			one_hot = torch.empty([batch_size, size], dtype=torch.float)
+			for i, idx in enumerate(idxs):
+				one_hot[i, idx] = 1
+			return one_hot.requires_grad_(False)
+
 
 		t_criterion = nn.NLLLoss()
 		o1_criterion = nn.NLLLoss()
 		o2_criterion = nn.NLLLoss()
 
-		#train_sampler = RandomSampler(self.train_data)
 		train_sampler = WeightedRandomSampler(self.get_weights(self.train_data), num_samples=len(self.train_data))
 		train_dataloader = DataLoader(self.train_data, batch_size=self.batch_size, sampler=train_sampler, drop_last=True)
 
 		for epoch in range(self.num_epochs):
 
-			self.find_accuracy(self.val_data, epoch)
+			#self.find_accuracy(self.val_data, epoch)
 
 			for (states, instructions), actions in train_dataloader:
 
@@ -109,6 +121,9 @@ class Agent_Zork:
 						if object_count >= 2:
 							o2_indices_to_use.append(i)
 
+				# insert one-hots here
+				#correct_q_t = get_one_hot_encoding(template_idxs, len(self.template_generator.templates), self.batch_size)
+				#correct_q_o1 = get_one_hot_encoding(o1_idxs, len(self.vocab), self.batch_size)
 				q_ts, q_o1s, q_o2s = self.model(states, instructions)
 
 				template_loss = update(torch.tensor(t_indices_to_use, dtype=torch.long), template_idxs, q_ts, t_criterion)
@@ -117,11 +132,13 @@ class Agent_Zork:
 
 				print(epoch, "\t", template_loss, "\t", o1_loss, "\t", o2_loss)
 
-			if epoch % 50 == 0 and epoch != 0:
-				torch.save(self.model.state_dict(), "basic_model.pt")
+			if epoch % 10 == 0 and epoch != 0:
+				torch.save(self.model.state_dict(), self.save_name)
+				self.find_accuracy(self.train_data,  epoch)
 
 		self.find_accuracy(self.val_data, self.num_epochs)
-		torch.save(self.model.state_dict(), "basic_model.pt")
+		self.find_accuracy(self.train_data, self.num_epochs)
+		torch.save(self.model.state_dict(), self.save_name)
 
 	def get_weights(self, data):
 
@@ -297,27 +314,42 @@ class Agent_Zork:
 			for idx in test_idxs:
 				print(idx, file=f)
 
+	def visualize_embeddings(self):
+
+		token = self.data.tokenize_sentence("<s>")
+		embedding_tensor = self.model.get_embedding(token[0]).unsqueeze(dim=0)
+
+		for i in range(2, len(self.vocab)):
+			token = self.data.tokenize_sentence(self.vocab[i])
+			embedding_tensor = torch.cat([embedding_tensor, self.model.get_embedding(token[0]).unsqueeze(dim=0)], dim=0)
+
+		fitted_embeddings = TSNE().fit_transform(embedding_tensor.detach().numpy())
+		
+		plt.scatter(fitted_embeddings[:, 0], fitted_embeddings[:, 1])
+		plt.show()
+
+
 
 if __name__ == "__main__":
 
 
 	args = {
-		"embedding_size": 64, 
+		"embedding_size": 8, 
 		"hidden_size": 128, 
 		"spm_path": "./spm_models/unigram_8k.model", 
-		"rom_path": "zork1.z5", 
-		"walkthrough_filename": "../walkthroughs/zork_super_walkthrough",
-		"steps": 1000000,
+		"rom_path": "../z-machine-games-master/jericho-game-suite/zork1.z5", 
+		"walkthrough_filename": "../walkthroughs/zork_sentence_walkthrough",
+		"clip": 40,
 		"max_seq_len": 250,
-		"batch_size": 16,
+		"batch_size": 64,
 		"learning_rate": 0.0005,
-		"num_samples": 512,
-		"num_epochs": 80,
+		"num_epochs": 150,
 	}
 
-	agent = Agent_Zork(args, model_name="basic_model.pt", index_file_name="data_indices")
+	agent = Agent_Zork(args, model_name="./models/easy_model++.pt", index_file_name="data_indices", save_name="./models/easy_model++.pt")
 	#agent.train()
 	agent.find_accuracy(agent.train_data, print_examples=True)
+	#agent.visualize_embeddings()
 
 
 

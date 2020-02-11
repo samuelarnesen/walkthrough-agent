@@ -1,38 +1,27 @@
 from parse_walkthrough import Walkthrough
 from jericho import *
 
-# get instructions
-instructions = []
-with open("../walkthroughs/zork_ts_0") as f:
-	for line in f.readlines():
-		if len(line) < 2:
-			continue
-		if line[0] == ">":
-			instructions.append(line.lstrip(" >").rstrip(" \n"))
 
-# check the walkthrough is the same
-"""wt = Walkthrough("../walkthroughs/zork_super_walkthrough")
-super_instructions = wt.get_all_actions()
-for action1, action2 in zip(super_instructions, instructions):
-	print(action1)
-	if action1 != action2:
-		print("\nERROR:")
-		print("super:", action1, "\ncorrect:", action2)
-		break
-"""
+# get instructions
+#wt = Walkthrough("../walkthroughs/zork_sentence_walkthrough")
+#instructions = wt.get_all_actions()
 
 # play w the instructions
-rom = "zork1.z5"
+rom = "../z-machine-games-master/jericho-game-suite/curses.z5"
 bindings = load_bindings(rom)
 seed = bindings["seed"]
 env = FrotzEnv(rom, seed=seed)
 
-for act in instructions:
-	observation, reward, done, info = env.step(act)
-	print(">" + act)
+instruction_list = []
+for action in bindings["walkthrough"].split("/"):
+	instruction_list.append(action)
+
+for instruction in instruction_list:
+	print("\n\n\n>" + instruction)
+	observation, reward, done, info = env.step(instruction)
 	print(observation)
 
-
+print(reward, len(instruction_list))
 
 
 
