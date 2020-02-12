@@ -29,6 +29,8 @@ class Agent_Zork:
 		self.num_epochs = args["num_epochs"]
 		self.clip = args["clip"]
 		self.save_name = save_name
+		self.o1_start = args["o1_start"]
+		self.o2_start = args["o2_start"]
 
 		if index_file_name == None:
 			shuffled_idxs = list(range(len(self.data)))
@@ -80,13 +82,6 @@ class Agent_Zork:
 
 			return loss.item()
 
-		def get_one_hot_encoding(idxs, size, batch_size):
-			one_hot = torch.empty([batch_size, size], dtype=torch.float)
-			for i, idx in enumerate(idxs):
-				one_hot[i, idx] = 1
-			return one_hot.requires_grad_(False)
-
-
 		t_criterion = nn.NLLLoss()
 		o1_criterion = nn.NLLLoss()
 		o2_criterion = nn.NLLLoss()
@@ -96,7 +91,7 @@ class Agent_Zork:
 
 		for epoch in range(self.num_epochs):
 
-			#self.find_accuracy(self.val_data, epoch)
+			self.find_accuracy(self.val_data, epoch)
 
 			for (states, instructions), actions in train_dataloader:
 
@@ -121,16 +116,19 @@ class Agent_Zork:
 						if object_count >= 2:
 							o2_indices_to_use.append(i)
 
-				# insert one-hots here
-				#correct_q_t = get_one_hot_encoding(template_idxs, len(self.template_generator.templates), self.batch_size)
-				#correct_q_o1 = get_one_hot_encoding(o1_idxs, len(self.vocab), self.batch_size)
 				q_ts, q_o1s, q_o2s = self.model(states, instructions)
 
 				template_loss = update(torch.tensor(t_indices_to_use, dtype=torch.long), template_idxs, q_ts, t_criterion)
-				o1_loss = update(torch.tensor(o1_indices_to_use, dtype=torch.long), o1_idxs, q_o1s, o1_criterion)
-				o2_loss = update(torch.tensor(o2_indices_to_use, dtype=torch.long), o2_idxs, q_o2s, o2_criterion)
+				print(epoch, "\t", template_loss, end="\t")
 
-				print(epoch, "\t", template_loss, "\t", o1_loss, "\t", o2_loss)
+				if epoch >= self.o1_start:
+					o1_loss = update(torch.tensor(o1_indices_to_use, dtype=torch.long), o1_idxs, q_o1s, o1_criterion)
+					print(o1_loss, end="\t")
+					if epoch >= self.o2_start:
+						o2_loss = update(torch.tensor(o2_indices_to_use, dtype=torch.long), o2_idxs, q_o2s, o2_criterion)
+						print(o2_loss, end="")
+
+				print()
 
 			if epoch % 10 == 0 and epoch != 0:
 				torch.save(self.model.state_dict(), self.save_name)
@@ -338,17 +336,19 @@ if __name__ == "__main__":
 		"hidden_size": 128, 
 		"spm_path": "./spm_models/unigram_8k.model", 
 		"rom_path": "../z-machine-games-master/jericho-game-suite/zork1.z5", 
-		"walkthrough_filename": "../walkthroughs/zork_sentence_walkthrough",
+		"walkthrough_filename": "../walkthroughs/zork_super_walkthrough",
 		"clip": 40,
 		"max_seq_len": 250,
 		"batch_size": 64,
 		"learning_rate": 0.0005,
-		"num_epochs": 150,
+		"num_epochs": 300,
+		"o1_start": 150,
+		"o2_start": 200
 	}
 
-	agent = Agent_Zork(args, model_name="./models/easy_model++.pt", index_file_name="data_indices", save_name="./models/easy_model++.pt")
-	#agent.train()
-	agent.find_accuracy(agent.train_data, print_examples=True)
+	agent = Agent_Zork(args, index_file_name="data_indices", save_name="./models/model211.pt")
+	agent.train()
+	#agent.find_accuracy(agent.train_data, print_examples=True)
 	#agent.visualize_embeddings()
 
 

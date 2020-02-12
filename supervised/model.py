@@ -51,12 +51,10 @@ class State_Encoder(nn.Module):
 
 		super(State_Encoder, self).__init__()
 
-		self.encoder_zero = nn.LSTM(embedding_size, hidden_size, bidirectional=True)
-		self.encoder_one = nn.LSTM(embedding_size, hidden_size, bidirectional=True)
-		self.encoder_two = nn.LSTM(embedding_size, hidden_size, bidirectional=True)
-		self.encoder_three = nn.LSTM(embedding_size, hidden_size, bidirectional=True)
-
-		self.combiner = nn.Linear(hidden_size * 8, hidden_size * 2)
+		self.encoder_zero = nn.LSTM(embedding_size, int(hidden_size / 2), bidirectional=True)
+		self.encoder_one = nn.LSTM(embedding_size, int(hidden_size / 4), bidirectional=True)
+		self.encoder_two = nn.LSTM(embedding_size, int(hidden_size / 8), bidirectional=True)
+		self.encoder_three = nn.LSTM(embedding_size, int(hidden_size / 8), bidirectional=True)
 
 	def forward(self, state):
 
@@ -66,9 +64,7 @@ class State_Encoder(nn.Module):
 		encoded_three, _ = self.encoder_three(state[:, 3, :, :].permute(1, 0, 2))
 
 		combined_tensor = torch.cat([encoded_zero[-1, :, :], encoded_one[-1, :, :], encoded_two[-1, :, :], encoded_three[-1, :, :]], dim=1)
-		linear_combo = self.combiner(combined_tensor)
-
-		return linear_combo
+		return combined_tensor
 
 	def flatten_parameters(self):
 
@@ -100,8 +96,9 @@ class Scorer(nn.Module):
 
 		super(Scorer, self).__init__()
 
-		self.attention = nn.Linear(hidden_size * 4, 1)
-		self.linear_scorer = nn.Linear(input_size, output_size)
+		self.attention = nn.Linear(hidden_size * 2, hidden_size * 2)
+		self.linear_scorer_1 = nn.Linear(input_size, input_size)
+		self.linear_scorer_2 = nn.Linear(input_size, output_size)
 
 	def forward(self, full_instruction_encoder_output, state, other=[]):
 
@@ -111,15 +108,16 @@ class Scorer(nn.Module):
 		for other_vec in other:
 			full_input = torch.cat([full_input, other_vec], dim=1)
 
-		return self.linear_scorer(full_input)
+		return self.linear_scorer_2(self.linear_scorer_1(full_input))
 
 	def apply_attention(self, encoder_outputs, state):
 
 		sequence_length, batch_size, encoded_size = encoder_outputs.size()
 
 		def attend(encoder_output):
-			attention_input = torch.cat([state, encoder_output], dim=1)
-			return self.attention(attention_input)
+			altered_state = self.attention(state)
+			weight = torch.bmm(altered_state.unsqueeze(1), encoder_output.unsqueeze(2))
+			return weight.squeeze(2)
 
 		weights = attend(encoder_outputs[0, :, :])
 		for i in range(1, sequence_length):
