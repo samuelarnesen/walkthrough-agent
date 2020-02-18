@@ -1,0 +1,7 @@
+tell OBJ to CMD
+tell OBJ CMD
+land
+remove OBJ
+get out of OBJ
+set OBJ to OBJ
+say OBJ

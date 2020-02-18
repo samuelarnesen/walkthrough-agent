@@ -1,9 +1,10 @@
 from jericho import *
 from torch.utils.data import Dataset
-import copy
+import copy, re
 import sentencepiece as spm
 import numpy as np
 import torch 
+from utils import *
 
 class Walkthrough:
 
@@ -12,7 +13,6 @@ class Walkthrough:
 		self.all_instructions=[]
 		if filename != None:
 			self.load_from_file(filename)
-
 
 	def load_from_file(self, filename):
 
@@ -88,6 +88,9 @@ class SuperWalkthrough:
 		self.actions = []
 		self.descriptions = []
 		self.wt = None
+		self.section_num = 0 # for iterator
+		self.internal_num = -1 # for iterator
+		self.start = True # for iterator
 
 		if filename != None and rom_path != None:
 			self.load_from_walkthrough(filename, rom_path)
@@ -144,7 +147,9 @@ class SuperWalkthrough:
 					observation = location_descriptions[location.name]
 
 				add(observation, items, location.name, action)
+
 		self.descriptions.pop()
+		env.close()
 
 	def get_state_descriptions(self):
 		return self.descriptions
@@ -152,29 +157,73 @@ class SuperWalkthrough:
 	def get_instructions(self):
 		return self.wt.get_sections()
 
+	def __iter__(self):
+		# potentially add resets here
+		self.section_num = 0 
+		self.internal_num = -1 
+		self.start = True
+		return self
+
+	def __next__(self):
+		section = self.wt.get_section(self.section_num)
+		self.internal_num = (self.internal_num + 1) % len(section["List"])
+
+		if self.internal_num == 0 and not self.start:
+			self.section_num += 1
+			if self.section_num >= self.wt.get_number_of_sections():
+				raise StopIteration
+			section = self.wt.get_section(self.section_num)
+
+		instruction = section["Text"]
+		state = self.descriptions[self.section_num][self.internal_num]
+		action = section["List"][self.internal_num]
+		self.start = False
+
+		#print(self.section_num, self.internal_num, len(section), end=" ")
+
+
+		return instruction, state, action, self.internal_num == 0 
+
 
 class Walkthrough_Dataset(Dataset):
 
-	def __init__(self, wt_filename=None, rom_path=None, spm_path=None):
+	def __init__(self, wt_filenames=None, rom_paths=None, spm_path=None):
 		self.states = []
 		self.instructions = []
 		self.actions = []
 		self.sp = None
 		self.device = "cuda" if torch.cuda.is_available() else "cpu"
+		self.walkthroughs = []
 
-		if wt_filename != None and rom_path != None:
-			super_wt = SuperWalkthrough(wt_filename, rom_path)
-			for state_section, instruction_section in zip(super_wt.get_state_descriptions(), super_wt.get_instructions()):
-				for state, action in zip(state_section, instruction_section["List"]):
-					self.states.append(state)
-					self.instructions.append(instruction_section["Text"])
-					self.actions.append(action)
+		if spm_path != None:
+			self.sp = spm.SentencePieceProcessor()
+			self.sp.Load(spm_path)
 
-			if spm_path != None:
-				self.sp = spm.SentencePieceProcessor()
-				self.sp.Load(spm_path)
-				self.states = self.convert_batch_to_tokens(self.states, 200)
-				self.instructions = self.convert_batch_to_tokens(self.instructions, 400)
+		if wt_filenames != None and rom_paths != None:
+			if wt_filenames == type(""):
+				wt_filenames = [wt_filenames]
+			if rom_paths == type(""):
+				rom_paths = [rom_paths]
+
+			for wt_filename, rom_path in zip(wt_filenames, rom_paths):
+
+				super_wt = SuperWalkthrough(wt_filename, rom_path)
+				self.walkthroughs.append(super_wt)
+				for state_section, instruction_section in zip(super_wt.get_state_descriptions(), super_wt.get_instructions()):
+					for state, action in zip(state_section, instruction_section["List"]):
+						self.states.append(state)
+						self.instructions.append(instruction_section["Text"])
+						self.actions.append(action)
+
+				if spm_path != None:
+					game_states = convert_batch_to_tokens(self.states, 200, self.device, self.sp)
+					game_instructions = convert_batch_to_tokens(self.instructions, 400, self.device, self.sp)
+					if self.states == type([]):
+						self.states = game_states
+						self.instructions = game_instructions
+					else:
+						self.states = torch.cat([self.states, game_states], dim=0)
+						self.instructions = torch.cat([self.instructions, game_instructions], dim=0)
 
 
 	def __getitem__(self, index):
@@ -193,32 +242,6 @@ class Walkthrough_Dataset(Dataset):
 			split_wtd.actions.append(self.actions[idx])
 
 		return split_wtd
-
-	def convert_batch_to_tokens(self, batch, max_sequence):
-		np_list = []
-		for example in batch:
-			np_list.append(self.convert_to_tokens(example, max_sequence))
-		return torch.tensor(data=np.asarray(np_list), dtype=torch.long, device=self.device)
-
-	def convert_to_tokens(self, text, max_sequence):
-		split_text = text.split("|")
-		token_array = np.zeros([len(split_text), max_sequence])
-		for i, sequence in enumerate(split_text):
-			enc_seq = self.sp.encode_as_ids("<s>" + sequence + "</s>")
-			for j, token in enumerate(enc_seq):
-				token_array[i][j] = np.int32(token)
-		return token_array
-
-	def get_vocab_size(self):
-		return len(self.sp)
-
-	def tokenize_sentence(self, sentence):
-		return self.sp.encode_as_ids(sentence)
-
-
-
-
-
 
 
 

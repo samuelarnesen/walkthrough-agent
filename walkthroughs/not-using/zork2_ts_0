@@ -1,0 +1,79 @@
+##http://www.gameboomers.com/wtcheats/pcZz/Zork2.htm##
+
+Note: the wizard may appear once in a while and cast a spell on you, don't worry. The spell will wear off after a while. If you can't do anything else, just wait it out. It would be wise to save the game periodically, as a precaution in in case you make a mistake.
+
+"Take all",
+[s,s,s,sw,s], "light lamp",
+[se], "enter gazebo", "take teapot", "exit",
+[n,ne], "fill teapot",
+[s,se],
+[s,s,w]
+-> you are now in the carousel room. Because of its rapid spinning, you are disoriented in direction. You are trying to get to the riddle room which lies to the se, but you might end up somewhere else. Just make your way back to the carousel room and keep trying until you get there. When you get to the riddle room, you will need to solve the riddle before you can get to the pearl room. Just say "a well", which is the answer to the riddle.
+
+[East], "take pearls",
+[east], "get into bucket", "pour water", "get out",
+[east], "take red, blue, and green cakes", "eat green cake",
+[east], "throw red cake into pool", "take candy",
+[west], "eat blue cake",
+[nw]
+-> instructions on operating the robot can be found in the same room as the robot is. Do the following:
+
+tell robot "go east" then go [east] yourself
+tell robot "push triangle"
+tell robot "go south" then go [south] and "take sphere"
+tell robot "lift cage" then "take sphere" and go
+[n,w]
+-> in the low room, your compass will be quite unreliable, so just do what you did in the carousel room, except this time you're trying to get se to the tea room.
+
+[West], "get into bucket", "fill teapot", "get out", "drop teapot",
+[w], [w,nw], "open box", "take violin",
+[e],
+[n,n], "enter gazebo", "drop all but lamp and sword", "take mat and opener", "exit",
+[s,s,w,n], "take brick",
+[n,n],
+[up], "put mat under door", "open lid", "put opener in hole", "take mat", "take key", "take opener", "unlock door with key", "open door",
+[north], "take sphere",
+[s,down,s,s,s,e,n,n], "enter gazebo", "drop all but lamp, sword, and brick", "take newspaper and matches", "exit",
+[s,s,w,sw], "take string",
+[n], [down,e,n,n], "attack dragon",
+[south], "attack dragon",
+[south], "attack dragon",
+[w,w], "take ruby",
+[south], "get into basket", "open recepticle", "put paper in receptical", "light match", "light paper with match", "wait", "wait",
+[west], "tie wire to hook", "get out", "take coin",
+[south], "open purple book", "take stamp",
+[n], "get into basket", "untie wire", "wait", "wait", "wait", "wait",
+[west], "tie wire to hook", "get out",
+[south], "put string on brick", "put brick in hole", "light match", "light string with match",
+[n,s], "take crown",
+[n], "get into basket", "untie wire", "close receptical", "wait"
+-> keep waiting until the basket reaches the volcano bottom. "Get out",
+[n,e,e,se,e,n,n], "enter gazebo", "drop all but lamp", "exit",
+[s,w,sw,n,n,n,w,n,n], "take chest", "kiss princess",
+[s,s,s,se,e,n,n], "enter gazebo", "wait"
+-> keep waiting until the princess gives you the gold key from the unicorn.
+"Open chest", "again", "take dragon", "drop chest and rose", "take candy, red sphere, blue sphere, and pearls", "exit",
+[s,s,w,s,s,down,s], "take club",
+[se,ne,nw,sw,s,up,n,n,sw,sw], "feed lizard candy", "unlock door with gold key", "open door",
+[s,w], "drop all but lamp",
+[e,n,n,ne,n,n,n,w,n,w],
+[w,ne,e,s], "take portrait",
+[north], "enter light", "enter south wall", "enter light", "take bills", "kill",
+[w,w,w], "take lamp",
+[s,s,s,sw,s,se], "enter gazebo", "take violin, ruby, coin, stamp, and crown", "exit",
+[s,s],
+[w,sw,sw,s,w], "drop all but lamp", "take club",
+[west], "throw club at glass", "take white sphere",
+[east], "put white sphere on diamond stand", "put red sphere on ruby stand", "put blue sphere on sapphire stand", "take black sphere",
+[south], "put sphere in circle",
+[north], "take ruby, coin, stamp, and violin",
+[south], "give all but lamp to demon",
+[north], "take all",
+[south], "give all but lamp to demon"
+-> now, tell demon "give me wand". Guess what? "take wand",
+[n,e,n,n,ne,s], "point wand at menhir"
+-> now, say "float". Feels great, doesn't it?
+[southwest], "take collar",
+[ne,s,d,d], "put collar on dog",
+[e], "open door", [south], "turn off lamp", "open secret door",
+[south]

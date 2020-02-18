@@ -1,4 +1,5 @@
 from parse_walkthrough import Walkthrough_Dataset
+from utils import *
 from model import BasicModel
 from jericho import *
 from jericho.template_action_generator import TemplateActionGenerator
@@ -12,19 +13,18 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader, WeightedRandomSampler, SequentialSampler
 
 import numpy as np
-from sklearn.manifold import TSNE
+import sentencepiece as spm
+#from sklearn.manifold import TSNE
 #import matplotlib.pyplot as plt
 import random, re, math
-
 
 class Agent_Zork:
 
 	def __init__(self, args, model_name=None, index_file_name=None, save_name="basic_model.pt"):
 
-		self.data = Walkthrough_Dataset(args["walkthrough_filename"], args["rom_path"], args["spm_path"])
-		self.binding = jericho.load_bindings(args["rom_path"])
-		self.template_generator = TemplateActionGenerator(self.binding)
-		self.vocab, self.reverse_vocab = self.load_vocab(args["rom_path"])
+		self.data = Walkthrough_Dataset(args["walkthrough_filename"], args["rom_path"])
+		self.templates = create_templates_list(args["rom_path"], args["temp_path"])
+		self.vocab, self.reverse_vocab = load_vocab(args["rom_path"], args["add_word_path"])
 		self.batch_size = args["batch_size"]
 		self.num_epochs = args["num_epochs"]
 		self.clip = args["clip"]
@@ -40,20 +40,23 @@ class Agent_Zork:
 			self.train_data = self.data.split(shuffled_idxs[:train_idx_end])
 			self.val_data = self.data.split(shuffled_idxs[train_idx_end:val_idx_end])
 			self.test_data = self.data.split(shuffled_idxs[val_idx_end:])
-			self.dump_indices("data_indices", shuffled_idxs[:train_idx_end], shuffled_idxs[train_idx_end:val_idx_end], shuffled_idxs[val_idx_end:])
+			dump_indices("data_indices", shuffled_idxs[:train_idx_end], shuffled_idxs[train_idx_end:val_idx_end], shuffled_idxs[val_idx_end:])
 		else:
-			train_idxs, val_idxs, test_idxs = self.load_indices(index_file_name)
+			train_idxs, val_idxs, test_idxs = load_indices(index_file_name)
 			self.train_data = self.data.split(train_idxs)
 			self.val_data = self.data.split(val_idxs)
 			self.test_data = self.data.split(test_idxs)
 
+		sp = spm.SentencePieceProcessor()
+		sp.Load(args["spm_path"])
+
 		model_args = {
 			"embedding_size": args["embedding_size"],
 			"hidden_size": args["hidden_size"],
-			"template_size": len(self.template_generator.templates),
-			"vocab_size": self.data.get_vocab_size(),
+			"template_size": len(self.templates),
+			"spm_path": args["spm_path"],
+			"vocab_size": len(sp),
 			"output_vocab_size": len(self.vocab),
-			"num_samples": 512,
 			"batch_size": args["batch_size"]
 		}
 		self.model = BasicModel(model_args)
@@ -62,7 +65,29 @@ class Agent_Zork:
 		if model_name != None:
 			self.model.load_state_dict(torch.load(model_name))
 
-	def train(self):
+	def train(self, method="batch"):
+		if method == "batch":
+			self.train_batch()
+		elif method == "sequential":
+			self.train_sequential()
+		else:
+			print("METHOD NOT AVAILABLE")
+
+	def train_sequential(self):
+		missing_count = 0
+		for wt in self.data.walkthroughs:
+			a_dist = None
+			for instruction, state, action, start in wt:
+				template_idx, o1_idx, o2_idx = self.identify_components(action)
+				reconstruction = self.template_to_string(template_idx, o1_idx, o2_idx)
+				if not are_equivalent(reconstruction, action):
+					print(action, "\t", reconstruction)
+					missing_count += 1
+
+		print(missing_count)
+					
+
+	def train_batch(self):
 
 		def update(indices_to_use, option_indices, values, criterion):
 
@@ -91,7 +116,8 @@ class Agent_Zork:
 
 		for epoch in range(self.num_epochs):
 
-			self.find_accuracy(self.val_data, epoch)
+			if epoch % 5 == 0:
+				self.find_accuracy(self.val_data, epoch)
 
 			for (states, instructions), actions in train_dataloader:
 
@@ -108,9 +134,9 @@ class Agent_Zork:
 					template_idxs.append(template_idx)
 					o1_idxs.append(o1_idx)
 					o2_idxs.append(o2_idx)
-					if reconstruction == action:
+					if are_equivalent(reconstruction, action):
 						t_indices_to_use.append(i)
-						object_count = self.template_generator.templates[template_idx].count("OBJ")
+						object_count = self.templates[template_idx].count("OBJ")
 						if object_count >= 1:
 							o1_indices_to_use.append(i)
 						if object_count >= 2:
@@ -143,7 +169,7 @@ class Agent_Zork:
 		sequential_sampler = SequentialSampler(data)
 		base_dataloader = DataLoader(data, batch_size=1, sampler=sequential_sampler, drop_last=False)
 
-		frequencies = np.zeros(len(self.template_generator.templates))
+		frequencies = np.zeros(len(self.templates))
 		for _, action in base_dataloader:
 
 			template_idx, o1_idx, o2_idx = self.identify_components(action[0])
@@ -176,7 +202,8 @@ class Agent_Zork:
 
 		def get_loss(condition, loss_list, probabilities, correct):
 			if condition:
-				loss_list.append(criterion(probabilities, torch.tensor([correct], dtype=torch.long)).item())
+				correct_idx_list = [correct[0]] if type(correct) == type([]) else [correct]
+				loss_list.append(criterion(probabilities, torch.tensor(correct_idx_list, dtype=torch.long)).item())
 			return loss_list
 
 		def get_average_loss(loss_list):
@@ -195,7 +222,7 @@ class Agent_Zork:
 		o1_losses = []
 		o2_losses = []
 
-		template_counts = np.zeros(len(self.template_generator.templates))
+		template_counts = np.zeros(len(self.templates))
 		ranks = []
 
 		for i in range(len(data)):
@@ -203,13 +230,13 @@ class Agent_Zork:
 			template_truth, o1_truth, o2_truth = self.identify_components(action)
 			reconstruction = self.template_to_string(template_truth, o1_truth, o2_truth)
 
-			if reconstruction == action:
+			if are_equivalent(reconstruction, action):
 
-				template_guess, o1_guess, o2_guess, t_prob, o1_prob, o2_prob = self.model.eval(state.unsqueeze(dim=0), instruction.unsqueeze(dim=0))
+				template_guess, o1_guess, o2_guess, t_prob, o1_prob, o2_prob = self.model.eval([state], [instruction])
 				if print_examples:
 
 					t_prob_list = []
-					for i, template in enumerate(self.template_generator.templates):
+					for i, template in enumerate(self.templates):
 						t_prob_list.append(t_prob[0, i].item())
 					sorted_ts = list(reversed(sorted(t_prob_list)))
 
@@ -225,7 +252,7 @@ class Agent_Zork:
 						template_counts[template_truth] = 1
 
 				else:
-					object_count = self.template_generator.templates[template_truth].count("OBJ")
+					object_count = self.templates[template_truth].count("OBJ")
 					correct_templates, total_templates = update(True, correct_templates, total_templates, template_guess, template_truth)
 					correct_o1, total_o1 = update(object_count >= 1, correct_o1, total_o1, o1_guess, o1_truth)
 					correct_o2, total_o2 = update(object_count >= 2, correct_o2, total_o2, o2_guess, o2_truth)
@@ -244,89 +271,72 @@ class Agent_Zork:
 		else:
 			print(np.mean(np.asarray(ranks)), "/", np.sum(template_truth))
 
-
 	def identify_components(self, action):
-		output = [-1, -1, -1]
-		for i, template_string in enumerate(self.template_generator.templates):
-			match_obj = re.fullmatch(template_string.replace("OBJ", "(\w+)"), action)
-			if match_obj != None:
 
-				output[0] = i
+		def find_regular_match(template_string, idx, action_to_use):
+
+			output = [-1, [], []]
+			match_obj = re.fullmatch(template_string.replace("OBJ", "(\w+(?:\s?\w+){0,3})"), action_to_use)
+
+			if match_obj != None:
+				output[0] = idx
 				for i in range(0, len(match_obj.groups())):
 					word = match_obj.group(i + 1)
-					output[i + 1] = self.reverse_vocab[word[0:min(6, len(word))]]
-
+					for individual_word in word.split(" "):
+						output[i + 1].append(self.reverse_vocab[individual_word[0:min(6, len(individual_word))].lower()])
 				return output
+			return None
+
+		def edit_action(test_string, replace_cmd=None):
+			removed_quotes =  "".join(test_string.split("\""))
+			if replace_cmd != None:
+				return removed_quotes.replace(replace_cmd, "CMD")
+			return removed_quotes
+
+
+		output = [-1, [], []]
+
+		for i, template_string in enumerate(self.templates):
+
+			if "CMD" in template_string:
+				first_word = template_string.split(" ")[0]
+				quote_regex = re.compile("(?:" + first_word + ".*(\"[\w|\s]+\"))|(?:" + first_word + ".*to ([\w|\s]+))")
+				quote_match = re.search(quote_regex, action)
+				if quote_match != None:
+					idx = 1 if quote_match.group(1) != None else 2
+					inner_command = quote_match.group(idx).lstrip("\"").rstrip("\"")
+					for j, inner_template in enumerate(self.templates):
+						if "CMD" not in inner_template:
+							inner_match = find_regular_match(inner_template, j, inner_command)
+							if inner_match != None:
+								replaced_match = find_regular_match(template_string, i, edit_action(action, inner_command))
+								if replaced_match != None:
+									return replaced_match
+
+			regular_output = find_regular_match(template_string, i, edit_action(action))
+			if regular_output != None:
+				return regular_output
 
 		return output
 	
 	def template_to_string(self, template_idx, o1, o2):
+
+		def find_replacement_string(index_list):
+			replacement_list = []
+			for obj_num in index_list:
+				replacement_list.append(self.vocab[int(obj_num)])
+			return " ".join(replacement_list)
+
 		"""copied from Hausknecht et al (2019)"""
-		template_string = self.template_generator.templates[template_idx]
+		template_string = self.templates[template_idx]
 		number_of_objects = template_string.count('OBJ')
 		if number_of_objects == 0:
 			return template_string
 		elif number_of_objects == 1:
-			return template_string.replace('OBJ', self.vocab[int(o1)])
+			return template_string.replace('OBJ', find_replacement_string(o1))
 		else:
-			return template_string.replace('OBJ', self.vocab[int(o1)], 1)\
-				.replace('OBJ', self.vocab[int(o2)], 1)
-
-	def load_vocab(self, rom_path):
-		"""copied from Hausknecht et al (2019)"""
-		env = FrotzEnv(rom_path)
-		vocab = {i+2: str(v) for i, v in enumerate(env.get_dictionary())}
-		reverse = {vocab[w]: w for w in vocab}
-		return vocab, reverse
-
-	def load_indices(self, file_path):
-		train_idxs = []
-		val_idxs = []
-		test_idxs = []
-		with open(file_path) as f:
-			current = ""
-			for line in f.readlines():
-				if "train" in line or "val" in line or "test" in line:
-					current = line.strip(" \n:")
-					continue
-				if current == "train":
-					train_idxs.append(int(line.strip(" \n")))
-				elif current == "val":
-					val_idxs.append(int(line.strip(" \n")))
-				elif current == "test":
-					test_idxs.append(int(line.strip(" \n")))
-		return train_idxs, val_idxs, test_idxs
-
-	def dump_indices(self, file_path, train_idxs, val_idxs, test_idxs):
-
-		with open(file_path, "w") as f:
-			print("train", file=f)
-			for idx in train_idxs:
-				print(idx, file=f)
-
-			print("val", file=f)
-			for idx in val_idxs:
-				print(idx, file=f)
-
-			print("test", file=f)
-			for idx in test_idxs:
-				print(idx, file=f)
-
-	def visualize_embeddings(self):
-
-		token = self.data.tokenize_sentence("<s>")
-		embedding_tensor = self.model.get_embedding(token[0]).unsqueeze(dim=0)
-
-		for i in range(2, len(self.vocab)):
-			token = self.data.tokenize_sentence(self.vocab[i])
-			embedding_tensor = torch.cat([embedding_tensor, self.model.get_embedding(token[0]).unsqueeze(dim=0)], dim=0)
-
-		fitted_embeddings = TSNE().fit_transform(embedding_tensor.detach().numpy())
-		
-		plt.scatter(fitted_embeddings[:, 0], fitted_embeddings[:, 1])
-		plt.show()
-
-
+			return template_string.replace('OBJ', find_replacement_string(o1), 1)\
+				.replace('OBJ', find_replacement_string(o2), 1)
 
 if __name__ == "__main__":
 
@@ -335,18 +345,20 @@ if __name__ == "__main__":
 		"embedding_size": 8, 
 		"hidden_size": 128, 
 		"spm_path": "./spm_models/unigram_8k.model", 
-		"rom_path": "../z-machine-games-master/jericho-game-suite/zork1.z5", 
-		"walkthrough_filename": "../walkthroughs/zork_super_walkthrough",
+		"rom_path": ["../z-machine-games-master/jericho-game-suite/zork1.z5", "../z-machine-games-master/jericho-game-suite/zork2.z5", "../z-machine-games-master/jericho-game-suite/zork3.z5"], 
+		"walkthrough_filename": ["../walkthroughs/zork_super_walkthrough", "../walkthroughs/zork2_super_walkthrough", "../walkthroughs/zork3_super_walkthrough"],
 		"clip": 40,
 		"max_seq_len": 250,
 		"batch_size": 64,
 		"learning_rate": 0.0005,
 		"num_epochs": 300,
 		"o1_start": 150,
-		"o2_start": 200
+		"o2_start": 200,
+		"temp_path": "../walkthroughs/additional_templates",
+		"add_word_path": "../walkthroughs/additional_words"
 	}
 
-	agent = Agent_Zork(args, index_file_name="data_indices", save_name="./models/model211.pt")
+	agent = Agent_Zork(args, save_name="./models/allzorkmodel.pt")
 	agent.train()
 	#agent.find_accuracy(agent.train_data, print_examples=True)
 	#agent.visualize_embeddings()
