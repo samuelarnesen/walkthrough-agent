@@ -108,3 +108,18 @@ def are_equivalent(reconstruction, original):
 	if reconstruction.lower() == clipped_original.lower():
 		return True
 	return "".join(clipped_original.split("\"")).lower() == reconstruction.lower()
+
+def are_cmd_equivalent(reconstruction, original):
+
+	if are_equivalent(reconstruction, original):
+		return True
+
+	if "CMD" not in reconstruction and "," not in original:
+		return False
+
+	original_subbed = clip_words(original, 6)
+	if "CMD" in reconstruction:
+		original_subbed = original_subbed[0:reconstruction.index("CMD")] + "CMD"
+	if "," in original_subbed:
+		original_subbed = original_subbed[original_subbed.index(",") + 1:].strip(" ")
+	return are_equivalent(reconstruction, original_subbed)

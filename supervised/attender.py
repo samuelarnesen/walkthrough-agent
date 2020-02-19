@@ -8,6 +8,7 @@ class Attender(nn.Module):
 
 	def __init__(self, hidden_size):
 		super(Attender, self).__init__()
+		self.hidden_size = hidden_size
 		self.attention = nn.Linear(hidden_size * 2, hidden_size * 2)
 
 	def attend(self, encoder_output, batch_size, state):
@@ -48,17 +49,23 @@ class TimeAttender(Attender):
 
 	def __init__(self, hidden_size, max_number_of_sentences):
 
-		super(BasicAttender, self).__init__(hidden_size)
+		super(TimeAttender, self).__init__(hidden_size)
 		self.max_number_of_sentences = max_number_of_sentences
 		self.attention = nn.Linear(hidden_size * 2, hidden_size * 2)
 		self.time_attention = nn.Linear(max_number_of_sentences, self.max_number_of_sentences)
 
 	def forward(self, encoder_outputs, state, previous_attention):
 
+		sequence_length, batch_size, encoded_size = encoder_outputs.size()
+
+		if type(previous_attention) == type(None):
+			previous_attention = torch.zeros([batch_size, sequence_length])
+			previous_attention[0, :] = torch.ones([sequence_length])
+
 		weights = self.get_non_normalized_weights(encoder_outputs, state)
 
 		adjusted_previous_weights = self.time_attention(previous_attention)
-		truncated_apw = adjusted_previous_weights[0:sequence_length, :, :]
+		truncated_apw = adjusted_previous_weights[:, 0:sequence_length]
 		previous_attention_probs = F.softmax(truncated_apw, dim=0)
 		adjusted_weights = previous_attention_probs * weights
 		normalized_weights_tensor = F.softmax(weights, dim=1)

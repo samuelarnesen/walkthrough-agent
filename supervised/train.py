@@ -1,6 +1,6 @@
 from parse_walkthrough import Walkthrough_Dataset
 from utils import *
-from model import BasicModel
+from model import BasicModel, TimeModel
 from jericho import *
 from jericho.template_action_generator import TemplateActionGenerator
 
@@ -28,6 +28,7 @@ class Agent_Zork:
 		self.batch_size = args["batch_size"]
 		self.num_epochs = args["num_epochs"]
 		self.clip = args["clip"]
+		self.learning_rate = args["learning_rate"]
 		self.save_name = save_name
 		self.o1_start = args["o1_start"]
 		self.o2_start = args["o2_start"]
@@ -50,16 +51,17 @@ class Agent_Zork:
 		sp = spm.SentencePieceProcessor()
 		sp.Load(args["spm_path"])
 
-		model_args = {
+		self.model_args = {
 			"embedding_size": args["embedding_size"],
 			"hidden_size": args["hidden_size"],
 			"template_size": len(self.templates),
 			"spm_path": args["spm_path"],
 			"vocab_size": len(sp),
 			"output_vocab_size": len(self.vocab),
-			"batch_size": args["batch_size"]
+			"batch_size": args["batch_size"],
+			"max_number_of_sentences": args["max_number_of_sentences"]
 		}
-		self.model = BasicModel(model_args)
+		self.model = BasicModel(self.model_args)
 		self.optimizer = optim.Adam(self.model.parameters(), lr=args["learning_rate"]) 
 
 		if model_name != None:
@@ -74,17 +76,43 @@ class Agent_Zork:
 			print("METHOD NOT AVAILABLE")
 
 	def train_sequential(self):
-		missing_count = 0
-		for wt in self.data.walkthroughs:
-			a_dist = None
-			for instruction, state, action, start in wt:
-				template_idx, o1_idx, o2_idx = self.identify_components(action)
-				reconstruction = self.template_to_string(template_idx, o1_idx, o2_idx)
-				if not are_equivalent(reconstruction, action):
-					print(action, "\t", reconstruction)
-					missing_count += 1
 
-		print(missing_count)
+		self.model = TimeModel(self.model_args)
+		self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
+		t_criterion = nn.NLLLoss()
+
+		t_loss = torch.zeros([1])
+
+		for epoch in range(self.num_epochs):
+			for wt in self.data.walkthroughs:
+				a_dist = None
+				section_length = 0
+				for instruction, state, action, start in wt:
+
+					if start and type(a_dist) != type(None):
+						a_dist = None
+						t_loss /= section_length
+						t_loss.backward(retain_graph=True)
+						utils.clip_grad_norm_(self.model.parameters(), self.clip)
+						self.optimizer.step()
+						print(t_loss.item())
+						section_length = 0
+						t_loss = torch.zeros([1])
+						self.optimizer.zero_grad()
+
+					template_idx, o1_idx, o2_idx = self.identify_components(action)
+					reconstruction = self.template_to_string(template_idx, o1_idx, o2_idx)
+					assert(are_cmd_equivalent(reconstruction, action))
+
+					q_ts, q_o1s, q_o2s, a_dist = self.model([state], [instruction], a_dist)
+					t_loss.add(t_criterion(q_ts, torch.tensor([template_idx], dtype=torch.long)))
+
+					section_length += 1
+
+			if epoch % 10 == 0 and epoch != 0:
+				torch.save(self.model.state_dict(), self.save_name)
+
+		torch.save(self.model.state_dict(), self.save_name)			
 					
 
 	def train_batch(self):
@@ -276,7 +304,7 @@ class Agent_Zork:
 		def find_regular_match(template_string, idx, action_to_use):
 
 			output = [-1, [], []]
-			match_obj = re.fullmatch(template_string.replace("OBJ", "(\w+(?:\s?\w+){0,3})"), action_to_use)
+			match_obj = re.fullmatch(template_string.replace("OBJ", "(\w+(?:\s?\w+){0,3}?)"), action_to_use)
 
 			if match_obj != None:
 				output[0] = idx
@@ -296,13 +324,18 @@ class Agent_Zork:
 
 		output = [-1, [], []]
 
+		if "," in action:
+			action = action[action.index(",") + 1:].strip(" ")
+
 		for i, template_string in enumerate(self.templates):
 
 			if "CMD" in template_string:
 				first_word = template_string.split(" ")[0]
-				quote_regex = re.compile("(?:" + first_word + ".*(\"[\w|\s]+\"))|(?:" + first_word + ".*to ([\w|\s]+))")
+				quote_regex = re.compile("(?:" + first_word + ".*?(\"[\w|\s]+\"))|(?:" + first_word + ".*?to ([\w|\s]+))")
 				quote_match = re.search(quote_regex, action)
+
 				if quote_match != None:
+
 					idx = 1 if quote_match.group(1) != None else 2
 					inner_command = quote_match.group(idx).lstrip("\"").rstrip("\"")
 					for j, inner_template in enumerate(self.templates):
@@ -355,11 +388,12 @@ if __name__ == "__main__":
 		"o1_start": 150,
 		"o2_start": 200,
 		"temp_path": "../walkthroughs/additional_templates",
-		"add_word_path": "../walkthroughs/additional_words"
+		"add_word_path": "../walkthroughs/additional_words",
+		"max_number_of_sentences": 35
 	}
 
-	agent = Agent_Zork(args, save_name="./models/allzorkmodel.pt")
-	agent.train()
+	agent = Agent_Zork(args, save_name="./models/timemodel0.pt")
+	agent.train(method="sequential")
 	#agent.find_accuracy(agent.train_data, print_examples=True)
 	#agent.visualize_embeddings()
 
