@@ -58,7 +58,7 @@ class TimeAttender(Attender):
 
 		sequence_length, batch_size, encoded_size = encoder_outputs.size()
 
-		if type(previous_attention) == type(None):
+		if type(previous_attention[0]) == type(None):
 			previous_attention = torch.zeros([batch_size, sequence_length])
 			previous_attention[0, :] = torch.ones([sequence_length])
 

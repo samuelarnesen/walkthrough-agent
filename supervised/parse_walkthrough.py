@@ -66,7 +66,7 @@ class Walkthrough:
 	def get_length_of_section(self, idx):
 		if idx >= len(self.sections) or idx < 0:
 			return None
-		return len(self.sections[idx])
+		return len(self.sections[idx]["List"])
 
 	def print_section(self, idx):
 		section = self.get_section(idx)
@@ -179,10 +179,25 @@ class SuperWalkthrough:
 		action = section["List"][self.internal_num]
 		self.start = False
 
-		#print(self.section_num, self.internal_num, len(section), end=" ")
+		return instruction, state, action, self.internal_num == 0
 
+	def section_generator(self):
 
-		return instruction, state, action, self.internal_num == 0 
+		sections = self.wt.get_sections()
+		longest_section_length = -1
+		for i in range(len(sections)):
+			longest_section_length = max(longest_section_length, self.wt.get_length_of_section(i))
+
+		for i in range(longest_section_length):
+			pairs = []
+			for j, section in enumerate(sections):
+				if i < self.wt.get_length_of_section(j):
+					pairs.append([section["Text"], self.descriptions[j][i], section["List"][i], i==0])
+				else:
+					pairs.append(None)
+
+			yield pairs
+
 
 
 class Walkthrough_Dataset(Dataset):

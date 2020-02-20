@@ -81,38 +81,52 @@ class Agent_Zork:
 		self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
 		t_criterion = nn.NLLLoss()
 
-		t_loss = torch.zeros([1])
+		for epoch in range(5):
 
-		for epoch in range(self.num_epochs):
-			for wt in self.data.walkthroughs:
-				a_dist = None
-				section_length = 0
-				for instruction, state, action, start in wt:
+			for wt_num, wt in enumerate(self.data.walkthroughs):
+				t_loss = torch.zeros([1])
+				a_dists = []
+				num_examples = 0
+				for pair in wt.section_generator():
+					# pair set up is instruction, state, action, start
+					states = []
+					instructions = []
+					template_idxs = []
+					o1_idxs = []
+					o2_idxs = []
+					sections_used = []
+					sections_missing = []
+					for i, section in enumerate(pair):
+						if section != None:
+							sections_used.append(i)
+							instructions.append(section[0])
+							states.append(section[1])
+							template_idx, o1_idx, o2_idx = self.identify_components(section[2])
+							template_idxs.append(template_idx)
+							o1_idxs.append(o1_idx)
+							o2_idxs.append(o2_idx)
+							if section[3]:
+								a_dists.append(None)
+						else:
+							sections_missing.append(i)
 
-					if start and type(a_dist) != type(None):
-						a_dist = None
-						t_loss /= section_length
-						t_loss.backward(retain_graph=True)
-						utils.clip_grad_norm_(self.model.parameters(), self.clip)
-						self.optimizer.step()
-						print(t_loss.item())
-						section_length = 0
-						t_loss = torch.zeros([1])
-						self.optimizer.zero_grad()
+					a_dists = torch.index_select(a_dists, 0, torch.tensor(sections_used, dtype=torch.long)) if torch.is_tensor(a_dists) else a_dists
+					q_ts, q_o1s, q_o2s, a_dists = self.model(states, instructions, a_dists)
 
-					template_idx, o1_idx, o2_idx = self.identify_components(action)
-					reconstruction = self.template_to_string(template_idx, o1_idx, o2_idx)
-					assert(are_cmd_equivalent(reconstruction, action))
+					t_loss = torch.add(t_loss, torch.mul(t_criterion(q_ts, torch.tensor(template_idxs, dtype=torch.long)), len(sections_used)))
+					num_examples += len(sections_used)
 
-					q_ts, q_o1s, q_o2s, a_dist = self.model([state], [instruction], a_dist)
-					t_loss.add(t_criterion(q_ts, torch.tensor([template_idx], dtype=torch.long)))
+					for i in sections_missing:
+						a_dists = torch.cat([a_dists[0:i, :], torch.zeros([1, self.model_args["max_number_of_sentences"]]), a_dists[i:, :]])
 
-					section_length += 1
+				t_loss = torch.div(t_loss, num_examples)
+				print(str(epoch) + "." + str(wt_num), "\t", t_loss.item())
+				self.optimizer.zero_grad()
+				t_loss.backward(retain_graph=True)
+				utils.clip_grad_norm_(self.model.parameters(), self.clip)
+				self.optimizer.step()
 
-			if epoch % 10 == 0 and epoch != 0:
-				torch.save(self.model.state_dict(), self.save_name)
-
-		torch.save(self.model.state_dict(), self.save_name)			
+			torch.save(self.model.state_dict(), self.save_name)
 					
 
 	def train_batch(self):
