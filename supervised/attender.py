@@ -47,12 +47,12 @@ class BasicAttender(Attender):
 
 class TimeAttender(Attender):
 
-	def __init__(self, hidden_size, max_number_of_sentences):
+	def __init__(self, hidden_size, max_number_of_entries):
 
 		super(TimeAttender, self).__init__(hidden_size)
-		self.max_number_of_sentences = max_number_of_sentences
+		self.max_number_of_entries = max_number_of_entries
 		self.attention = nn.Linear(hidden_size * 2, hidden_size * 2)
-		self.time_attention = nn.Linear(max_number_of_sentences, self.max_number_of_sentences)
+		self.time_attention = nn.Linear(max_number_of_entries, self.max_number_of_entries)
 
 	def forward(self, encoder_outputs, state, previous_attention):
 
@@ -67,8 +67,13 @@ class TimeAttender(Attender):
 		adjusted_previous_weights = self.time_attention(previous_attention)
 		truncated_apw = adjusted_previous_weights[:, 0:sequence_length]
 		previous_attention_probs = F.softmax(truncated_apw, dim=0)
+
+		#print(encoder_outputs.size(), weights.size(), previous_attention_probs.size(), previous_attention.size())
+
 		adjusted_weights = previous_attention_probs * weights
 		normalized_weights_tensor = F.softmax(weights, dim=1)
+
+
 
 		attention_applied = torch.bmm(normalized_weights_tensor.unsqueeze(dim=1), encoder_outputs.permute(1, 0, 2))
 

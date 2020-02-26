@@ -20,7 +20,7 @@ import random, re, math
 
 class Agent_Zork:
 
-	def __init__(self, args, model_name=None, index_file_name=None, save_name="basic_model.pt"):
+	def __init__(self, args, model_type="basic", model_name=None, index_file_name=None, save_name="basic_model.pt"):
 
 		self.data = Walkthrough_Dataset(args["walkthrough_filename"], args["rom_path"])
 		self.templates = create_templates_list(args["rom_path"], args["temp_path"])
@@ -59,34 +59,46 @@ class Agent_Zork:
 			"vocab_size": len(sp),
 			"output_vocab_size": len(self.vocab),
 			"batch_size": args["batch_size"],
-			"max_number_of_sentences": args["max_number_of_sentences"]
+			"max_number_of_sentences": args["max_number_of_sentences"],
+			"max_number_of_words": args["max_number_of_words"]
 		}
-		self.model = BasicModel(self.model_args)
+		self.model = BasicModel(self.model_args) if model_type == "basic" else TimeModel(self.model_args)
 		self.optimizer = optim.Adam(self.model.parameters(), lr=args["learning_rate"]) 
 
 		if model_name != None:
 			self.model.load_state_dict(torch.load(model_name))
 
-	def train(self, method="batch"):
-		if method == "batch":
-			self.train_batch()
-		elif method == "sequential":
-			self.train_sequential()
+	def train(self):
+		if self.model.get_name() == "basic":
+			self.train_basic()
+		elif self.model.get_name() == "time":
+			self.train_time()
 		else:
 			print("METHOD NOT AVAILABLE")
 
-	def train_sequential(self):
+	def train_time(self, track_accuracy=False):
 
-		self.model = TimeModel(self.model_args)
-		self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
+		def get_pct(correct, guesses):
+			correct_count = 0
+			for i, correct_item in enumerate(correct):
+				if guesses[i] == correct_item:
+					correct_count += 1
+			return correct_count
+
+		def get_accuracy_of_batch(q_ts, q_o1s, q_o2s, correct_ts, correct_o1s, correct_o2s):
+			t, o1, o2 = torch.argmax(q_ts, dim=1), torch.argmax(q_o1s, dim=1), torch.argmax(q_o2s, dim=1)
+			return get_pct(correct_ts, t)
+
 		t_criterion = nn.NLLLoss()
 
-		for epoch in range(5):
+		for epoch in range(self.num_epochs):
 
 			for wt_num, wt in enumerate(self.data.walkthroughs):
 				t_loss = torch.zeros([1])
-				a_dists = []
+				sentence_atts = []
+				word_atts = []
 				num_examples = 0
+				correct_count = 0
 				for pair in wt.section_generator():
 					# pair set up is instruction, state, action, start
 					states = []
@@ -106,30 +118,33 @@ class Agent_Zork:
 							o1_idxs.append(o1_idx)
 							o2_idxs.append(o2_idx)
 							if section[3]:
-								a_dists.append(None)
+								sentence_atts.append(None)
+								word_atts.append(None)
 						else:
 							sections_missing.append(i)
 
-					a_dists = torch.index_select(a_dists, 0, torch.tensor(sections_used, dtype=torch.long)) if torch.is_tensor(a_dists) else a_dists
-					q_ts, q_o1s, q_o2s, a_dists = self.model(states, instructions, a_dists)
+					sentence_atts = torch.index_select(sentence_atts, 0, torch.tensor(sections_used, dtype=torch.long)) if torch.is_tensor(sentence_atts) else sentence_atts
+					q_ts, q_o1s, q_o2s, sentence_atts, word_atts = self.model(states, instructions, sentence_atts, word_atts)
 
 					t_loss = torch.add(t_loss, torch.mul(t_criterion(q_ts, torch.tensor(template_idxs, dtype=torch.long)), len(sections_used)))
+					correct_count += get_accuracy_of_batch(q_ts, q_o1s, q_o2s, template_idxs, o1_idxs, o2_idxs)
 					num_examples += len(sections_used)
 
 					for i in sections_missing:
-						a_dists = torch.cat([a_dists[0:i, :], torch.zeros([1, self.model_args["max_number_of_sentences"]]), a_dists[i:, :]])
+						sentence_atts = torch.cat([sentence_atts[0:i, :], torch.zeros([1, self.model_args["max_number_of_sentences"]]), sentence_atts[i:, :]])
+						word_atts = torch.cat([word_atts[0:i, :, :], torch.zeros([1, self.model_args["max_number_of_sentences"], self.model_args["max_number_of_words"]]), word_atts[i:, :, :]])
 
 				t_loss = torch.div(t_loss, num_examples)
-				print(str(epoch) + "." + str(wt_num), "\t", t_loss.item())
+				print(str(epoch) + "." + str(wt_num), "\t", t_loss.item(), "\t", correct_count / num_examples)
 				self.optimizer.zero_grad()
 				t_loss.backward(retain_graph=True)
 				utils.clip_grad_norm_(self.model.parameters(), self.clip)
 				self.optimizer.step()
 
 			torch.save(self.model.state_dict(), self.save_name)
-					
 
-	def train_batch(self):
+					
+	def train_basic(self):
 
 		def update(indices_to_use, option_indices, values, criterion):
 
@@ -403,11 +418,12 @@ if __name__ == "__main__":
 		"o2_start": 200,
 		"temp_path": "../walkthroughs/additional_templates",
 		"add_word_path": "../walkthroughs/additional_words",
-		"max_number_of_sentences": 35
+		"max_number_of_sentences": 35,
+		"max_number_of_words": 100
 	}
 
-	agent = Agent_Zork(args, save_name="./models/timemodel0.pt")
-	agent.train(method="sequential")
+	agent = Agent_Zork(args, model_type="time", save_name="./models/timemodel1.pt")
+	agent.train()
 	#agent.find_accuracy(agent.train_data, print_examples=True)
 	#agent.visualize_embeddings()
 

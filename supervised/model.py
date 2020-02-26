@@ -60,7 +60,7 @@ class TimeModel(nn.Module):
 		self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
 		self.embeddings = nn.Embedding(args["vocab_size"], args["embedding_size"])
-		self.instruction_encoder = InstructionEncoder(args["embedding_size"], args["hidden_size"], args["spm_path"])
+		self.instruction_encoder = InstructionEncoder(args["embedding_size"], args["hidden_size"], args["spm_path"], basic=False)
 		self.state_encoder = StateEncoder(args["embedding_size"], args["hidden_size"], args["spm_path"])
 		self.attender = TimeAttender(args["hidden_size"], args["max_number_of_sentences"])
 
@@ -68,17 +68,18 @@ class TimeModel(nn.Module):
 		self.o1_scorer = Scorer((args["hidden_size"] * 4) + args["template_size"], args["output_vocab_size"])
 		self.o2_scorer = Scorer((args["hidden_size"] * 4) + args["template_size"] + args["output_vocab_size"], args["output_vocab_size"])
 
-	def forward(self, state, instruction, previous_attention):
+	def forward(self, state, instruction, previous_sentence_attention, previous_word_attention):
 
 		encoded_state = self.state_encoder(self.embeddings, state)
-		full_instruction_encoder_output = self.instruction_encoder(self.embeddings, instruction, encoded_state)
-		attended_instruction, sentence_weights = self.attender(full_instruction_encoder_output, encoded_state, previous_attention)
+
+		full_instruction_encoder_output, word_weights = self.instruction_encoder(self.embeddings, instruction, encoded_state, previous_attention=previous_word_attention)
+		attended_instruction, sentence_weights = self.attender(full_instruction_encoder_output, encoded_state, previous_sentence_attention)
 
 		q_t = self.t_scorer(attended_instruction, encoded_state)
 		q_o1 = self.o1_scorer(attended_instruction, encoded_state, [q_t.detach()])
 		q_o2 = self.o2_scorer(attended_instruction, encoded_state, [q_t.detach(), q_o1.detach()])
 
-		return F.log_softmax(q_t, dim=1), F.log_softmax(q_o1, dim=1), F.log_softmax(q_o2, dim=1), sentence_weights
+		return F.log_softmax(q_t, dim=1), F.log_softmax(q_o1, dim=1), F.log_softmax(q_o2, dim=1), sentence_weights, word_weights
 
 	def eval(self, state, instruction, previous_attention):
 		with torch.no_grad():

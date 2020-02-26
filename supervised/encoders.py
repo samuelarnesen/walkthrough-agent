@@ -5,7 +5,7 @@ from torch.autograd import Variable
 import nltk.data
 import sentencepiece as spm
 from utils import *
-from attender import BasicAttender
+from attender import BasicAttender, TimeAttender
 
 class StateEncoder(nn.Module):
 
@@ -44,9 +44,10 @@ class StateEncoder(nn.Module):
 
 class InstructionEncoder(nn.Module):
 
-	def __init__(self, embedding_size, hidden_size, spm_path):
+	def __init__(self, embedding_size, hidden_size, spm_path, basic=True, max_word_number=100):
 
 		super(InstructionEncoder, self).__init__()
+		self.basic = basic
 		self.word_encoder = nn.LSTM(embedding_size, hidden_size, bidirectional=True)
 		self.tokenizer = nltk.data.load("tokenizers/punkt/english.pickle")
 
@@ -56,25 +57,59 @@ class InstructionEncoder(nn.Module):
 		self.sp.Load(spm_path)
 
 		self.hidden_size = hidden_size
-		self.attender = BasicAttender(self.hidden_size)
+		self.attender = BasicAttender(self.hidden_size) if basic else TimeAttender(self.hidden_size, max_word_number)
 
-	def forward(self, embeddings, instructions, encoded_state, max_sentence_number=35):
+	def forward(self, embeddings, instructions, encoded_state, previous_attention=None, max_sentence_number=35, max_word_number=100):
+
+		if self.basic:
+			return self.basic_encode(embeddings, instructions, encoded_state, max_sentence_number, max_word_number)
+		else:
+			return self.time_encode(embeddings, instructions, encoded_state, max_sentence_number, max_word_number, previous_attention)
+
+	def basic_encode(self, embeddings, instructions, encoded_state, max_sentence_number, max_word_number):
 
 		def encode_instruction(instruction, index):
 			sentence_list = self.tokenizer.tokenize(instruction)
-			sentence_tensor = convert_batch_to_tokens(sentence_list, 100, self.device, self.sp)
+			sentence_tensor = convert_batch_to_tokens(sentence_list, max_word_number, self.device, self.sp)
 			embedded_sentence_tensor = embeddings(sentence_tensor).squeeze(1).permute(1, 0, 2)
 			sentence_encoder_output, _ = self.word_encoder(embedded_sentence_tensor)
 
 			encoded_instruction = self.attender(sentence_encoder_output, encoded_state[index, :])
 
-			return torch.cat([encoded_instruction, torch.zeros(max_sentence_number - len(sentence_list), self.hidden_size * 2)], dim=0)
+			return torch.cat([encoded_instruction, torch.zeros(max_sentence_number - len(sentence_list), self.hidden_size * 2)], dim=0).unsqueeze(0)
 
-		encoded_instructions = encode_instruction(instructions[0], 0).unsqueeze(0)
+		encoded_instructions = encode_instruction(instructions[0], 0)
 		for i in range(1, len(instructions)):
-			encoded_instructions = torch.cat([encoded_instructions, encode_instruction(instructions[i], i).unsqueeze(0)], dim=0)
+			encoded_instructions = torch.cat([encoded_instructions, encode_instruction(instructions[i], i)], dim=0)
 
 		return encoded_instructions.permute(1, 0, 2)
+
+	def time_encode(self, embeddings, instructions, encoded_state, max_sentence_number, max_word_number, previous_attention):
+
+		def encode_instruction(instruction, index):
+			sentence_list = self.tokenizer.tokenize(instruction)
+			sentence_tensor = convert_batch_to_tokens(sentence_list, max_word_number, self.device, self.sp)
+			embedded_sentence_tensor = embeddings(sentence_tensor).squeeze(1).permute(1, 0, 2)
+			sentence_encoder_output, _ = self.word_encoder(embedded_sentence_tensor)
+
+			attention_to_use = previous_attention[index, 0:len(sentence_list), :] if torch.is_tensor(previous_attention) else [None]
+			encoded_instruction, attention = self.attender(sentence_encoder_output[:, :, :], encoded_state[index, :], attention_to_use)
+
+			encoded_instruction = torch.cat([encoded_instruction, torch.zeros(max_sentence_number - len(sentence_list), self.hidden_size * 2)], dim=0).unsqueeze(0)
+			attention = torch.cat([attention, torch.zeros(max_sentence_number - len(sentence_list), max_word_number)]).unsqueeze(0)
+
+			return encoded_instruction, attention
+
+
+		encoded_instructions, attentions = encode_instruction(instructions[0], 0)
+		for i in range(1, len(instructions)):
+			next_encoded_instructions, next_attentions = encode_instruction(instructions[i], i)
+			encoded_instructions = torch.cat([encoded_instructions, next_encoded_instructions], dim=0)
+			attentions = torch.cat([attentions, next_attentions], dim=0)
+
+		return encoded_instructions.permute(1, 0, 2), attentions
+
+
 
 	def flatten_parameters(self):
 		self.encoder.flatten_parameters()
