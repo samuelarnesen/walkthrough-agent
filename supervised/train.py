@@ -22,6 +22,7 @@ class Agent_Zork:
 
 	def __init__(self, args, model_type="basic", model_name=None, index_file_name=None, save_name="basic_model.pt"):
 
+		self.device = "cuda" if torch.cuda.is_available() else "cpu"
 		self.data = Walkthrough_Dataset(args["walkthrough_filename"], args["rom_path"])
 		self.templates = create_templates_list(args["rom_path"], args["temp_path"])
 		self.vocab, self.reverse_vocab = load_vocab(args["rom_path"], args["add_word_path"])
@@ -62,7 +63,7 @@ class Agent_Zork:
 			"max_number_of_sentences": args["max_number_of_sentences"],
 			"max_number_of_words": args["max_number_of_words"]
 		}
-		self.model = BasicModel(self.model_args) if model_type == "basic" else TimeModel(self.model_args)
+		self.model = BasicModel(self.model_args).to(self.device) if model_type == "basic" else TimeModel(self.model_args).to(self.device)
 		self.optimizer = optim.Adam(self.model.parameters(), lr=args["learning_rate"]) 
 
 		if model_name != None:
@@ -89,15 +90,26 @@ class Agent_Zork:
 			t, o1, o2 = torch.argmax(q_ts, dim=1), torch.argmax(q_o1s, dim=1), torch.argmax(q_o2s, dim=1)
 			return get_pct(correct_ts, t)
 
+		def get_object_index(obj_indices):
+			full_word = " ".join(self.vocab[idx] for idx in obj_indices)
+			keyword = extract_object(full_word)
+			if len(keyword) == 0:
+				return None
+			return self.reverse_vocab[keyword]
+
 		t_criterion = nn.NLLLoss()
+		o1_criterion = nn.NLLLoss()
+		o2_criterion = nn.NLLLoss()
 
 		for epoch in range(self.num_epochs):
 
 			for wt_num, wt in enumerate(self.data.walkthroughs):
-				t_loss = torch.zeros([1])
+				t_loss = torch.zeros([1]).to(self.device)
+				o1_loss = torch.zeros([1]).to(self.device)
+				o2_loss = torch.zeros([1]).to(self.device)
 				sentence_atts = []
 				word_atts = []
-				num_examples = 0
+				num_examples = {"t": 0, "o1": 0, "o2": 0}
 				correct_count = 0
 				for pair in wt.section_generator():
 					# pair set up is instruction, state, action, start
@@ -114,9 +126,10 @@ class Agent_Zork:
 							instructions.append(section[0])
 							states.append(section[1])
 							template_idx, o1_idx, o2_idx = self.identify_components(section[2])
+
 							template_idxs.append(template_idx)
-							o1_idxs.append(o1_idx)
-							o2_idxs.append(o2_idx)
+							o1_idxs.append(get_object_index(o1_idx))
+							o2_idxs.append(get_object_index(o2_idx))
 							if section[3]:
 								sentence_atts.append(None)
 								word_atts.append(None)
@@ -126,23 +139,39 @@ class Agent_Zork:
 					sentence_atts = torch.index_select(sentence_atts, 0, torch.tensor(sections_used, dtype=torch.long)) if torch.is_tensor(sentence_atts) else sentence_atts
 					q_ts, q_o1s, q_o2s, sentence_atts, word_atts = self.model(states, instructions, sentence_atts, word_atts)
 
-					t_loss = torch.add(t_loss, torch.mul(t_criterion(q_ts, torch.tensor(template_idxs, dtype=torch.long)), len(sections_used)))
-					correct_count += get_accuracy_of_batch(q_ts, q_o1s, q_o2s, template_idxs, o1_idxs, o2_idxs)
-					num_examples += len(sections_used)
+					o1_sections = list(i for i, item in enumerate(o1_idxs) if item is not None)
+					o2_sections = list(i for i, item in enumerate(o2_idxs) if item is not None)
+					t_loss = torch.add(t_loss, torch.mul(t_criterion(q_ts, torch.tensor(template_idxs, dtype=torch.long)), len(template_idxs)))
+					if len(o1_sections) > 0:
+						o1_idxs_to_use = torch.tensor(o1_sections, dtype=torch.long)
+						q_o1s_to_use = torch.index_select(q_o1s, 0, o1_idxs_to_use)
+						o1_loss = torch.add(o1_loss, torch.mul(o1_criterion(q_o1s_to_use, o1_idxs_to_use), len(o1_idxs)))
+					if len(o2_sections) > 0:
+						o2_idxs_to_use = torch.tensor(o2_sections, dtype=torch.long)
+						q_o2s_to_use = torch.index_select(q_o2s, 0, o2_idxs_to_use)
+						o2_loss = torch.add(o2_loss, torch.mul(o2_criterion(q_o2s_to_use, o2_idxs_to_use), len(o2_idxs)))
+
+					with torch.no_grad():
+						correct_count += get_accuracy_of_batch(q_ts, q_o1s_to_use if len(o1_idxs) > 0 else None, q_o2s_to_use if len(o2_idxs) > 0 else None, template_idxs, o1_idxs, o2_idxs)
+					num_examples["t"] += len(template_idxs)
+					num_examples["o1"] += len(o1_idxs)
+					num_examples["o2"] += len(o2_idxs)
 
 					for i in sections_missing:
 						sentence_atts = torch.cat([sentence_atts[0:i, :], torch.zeros([1, self.model_args["max_number_of_sentences"]]), sentence_atts[i:, :]])
 						word_atts = torch.cat([word_atts[0:i, :, :], torch.zeros([1, self.model_args["max_number_of_sentences"], self.model_args["max_number_of_words"]]), word_atts[i:, :, :]])
 
-				t_loss = torch.div(t_loss, num_examples)
-				print(str(epoch) + "." + str(wt_num), "\t", t_loss.item(), "\t", correct_count / num_examples)
-				self.optimizer.zero_grad()
-				t_loss.backward(retain_graph=True)
+				t_loss = torch.div(t_loss, num_examples["t"])
+				o1_loss = torch.div(o1_loss, num_examples["o1"])
+				o2_loss = torch.div(o2_loss, num_examples["o2"])
+				print(str(epoch) + "." + str(wt_num), "\t", t_loss.item(), "\t", correct_count / num_examples["t"])
+				t_loss.backward() # test whether this is necessary
 				utils.clip_grad_norm_(self.model.parameters(), self.clip)
 				self.optimizer.step()
+				self.optimizer.zero_grad()
+
 
 			torch.save(self.model.state_dict(), self.save_name)
-
 					
 	def train_basic(self):
 
@@ -330,10 +359,17 @@ class Agent_Zork:
 
 	def identify_components(self, action):
 
+		lookarounds = ["with", "to", "from", "at", "in", "under", "into"]
+		lookaheads = "".join("(?!\\b" + la + "\\b)" for la in lookarounds)
+		lookbehinds = "".join("(?<!\\b" + la + "\\b)" for la in lookarounds)
+
+		regex_string = (lookaheads + "(\w+(?:\s?\w+){0,3}?)" + lookbehinds).replace("\w", "(?:" + lookaheads + "\w)")
+
 		def find_regular_match(template_string, idx, action_to_use):
 
 			output = [-1, [], []]
-			match_obj = re.fullmatch(template_string.replace("OBJ", "(\w+(?:\s?\w+){0,3}?)"), action_to_use)
+
+			match_obj = re.fullmatch(template_string.replace("OBJ", regex_string), action_to_use)
 
 			if match_obj != None:
 				output[0] = idx
@@ -400,6 +436,19 @@ class Agent_Zork:
 			return template_string.replace('OBJ', find_replacement_string(o1), 1)\
 				.replace('OBJ', find_replacement_string(o2), 1)
 
+	def get_objects(self):
+
+		for wt in self.data.walkthroughs:
+			for pair in wt:
+				# pair set up is instruction, state, action, start
+				action = pair[2]
+				template_idx, o1_idx, o2_idx = self.identify_components(action)
+
+				if len(o1_idx) > 1:
+					print(extract_object(" ".join(self.vocab[idx] for idx in o1_idx)))
+				if len(o2_idx) > 1:
+					print(extract_object(" ".join(self.vocab[idx] for idx in o2_idx)))
+
 if __name__ == "__main__":
 
 
@@ -410,9 +459,8 @@ if __name__ == "__main__":
 		"rom_path": ["../z-machine-games-master/jericho-game-suite/zork1.z5", "../z-machine-games-master/jericho-game-suite/zork2.z5", "../z-machine-games-master/jericho-game-suite/zork3.z5"], 
 		"walkthrough_filename": ["../walkthroughs/zork_super_walkthrough", "../walkthroughs/zork2_super_walkthrough", "../walkthroughs/zork3_super_walkthrough"],
 		"clip": 40,
-		"max_seq_len": 250,
 		"batch_size": 64,
-		"learning_rate": 0.0005,
+		"learning_rate": 0.001,
 		"num_epochs": 300,
 		"o1_start": 150,
 		"o2_start": 200,
@@ -422,7 +470,8 @@ if __name__ == "__main__":
 		"max_number_of_words": 100
 	}
 
-	agent = Agent_Zork(args, model_type="time", save_name="./models/timemodel1.pt")
+	agent = Agent_Zork(args, model_name="./models/timemodel1.pt", model_type="time", save_name="./models/timemodel2.pt")
+	#agent.get_objects()
 	agent.train()
 	#agent.find_accuracy(agent.train_data, print_examples=True)
 	#agent.visualize_embeddings()

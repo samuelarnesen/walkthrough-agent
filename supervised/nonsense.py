@@ -1,21 +1,31 @@
+
+weird_list = [124, 12414, 45345, None, 2313, 3523, None ,12145, 3463434, None, None, 23]
+
+transformed = list(i for i, item in enumerate(weird_list) if item is not None)
+
+
+print(transformed)
+
+
+"""
 import re
 
+template_string = "strike OBJ"
+action_to_use = "strike thief with knife"
 
-action = "tell dungeon master to go to parapet"
-template = "go to parapet"
-upper_template = "tell OBJ to CMD"
+lookarounds = ["with", "to", "from", "at", "in", "under"]
+lookaheads = "".join("(?!\\b" + la + "\\b)" for la in lookarounds)
+lookbehinds = "".join("(?<!\\b" + la + "\\b)" for la in lookarounds)
 
-ut2 = upper_template.replace("OBJ", "(\w+(?:\s?\w+){0,3}?)").replace("CMD", "(.*)")
+match_obj = re.fullmatch(template_string.replace("OBJ", lookaheads + "(\w+(?:\s?\w+){0,3}?)" + lookbehinds).replace("\w", "(?:" + lookaheads + "\w)"), action_to_use)
 
-
-print(ut2)
-match_obj = re.search(re.compile(ut2), action)
-
+print(template_string.replace("OBJ", lookaheads + "(\w+(?:\s?\w+){0,3}?)" + lookbehinds))
 if match_obj != None:
 	print(match_obj.groups())
 else:
-	print("No Match")
+	print("None")
 
+"""
 
 
 """
@@ -25,12 +35,13 @@ from jericho.template_action_generator import TemplateActionGenerator
 #from utils import *
 
 rom = "../z-machine-games-master/jericho-game-suite/zork3.z5"
-binding = jericho.load_bindings(rom)
-seed = binding["seed"]
+bindings = load_bindings(rom)
+seed = bindings["seed"]
 env = FrotzEnv(rom, seed=seed)
 #all_templates = TemplateActionGenerator(binding).templates
-wt = Walkthrough(filename="../walkthroughs/zork3_super_walkthrough")
-for instruction in wt.get_all_actions():
-	observation, _, _, _ = env.step(instruction)
-print(observation)
+wt = Walkthrough("../walkthroughs/zork3_super_walkthrough")
+
+for action in wt.get_all_actions():
+	ob, _, _, _ = env.step(action)
+print(ob)
 """

@@ -62,13 +62,17 @@ def dump_indices(file_path, train_idxs, val_idxs, test_idxs):
 
 def create_templates_list(rom_paths, additional_templates_path=None):
 
+	def count_obj(word):
+		return word.count("OBJ") + (len(word.split()) / 10)
+
 	templates = []
 	for rom_path in rom_paths:
 		binding = jericho.load_bindings(rom_path)
 		game_templates = TemplateActionGenerator(binding).templates
 		for template in game_templates:
 			if template not in templates:
-				templates.append(template)
+				if template != "push OBJ OBJ": # this was messing stuff up
+					templates.append(template)
 
 	if additional_templates_path != None:
 		with open(additional_templates_path) as f:
@@ -76,7 +80,7 @@ def create_templates_list(rom_paths, additional_templates_path=None):
 				if line not in templates:
 					templates.append(line.rstrip("\n"))
 
-	return templates
+	return list(reversed(sorted(templates, key=count_obj)))
 
 def load_vocab(rom_paths, additional_words_path=None):
 
@@ -123,3 +127,15 @@ def are_cmd_equivalent(reconstruction, original):
 	if "," in original_subbed:
 		original_subbed = original_subbed[original_subbed.index(",") + 1:].strip(" ")
 	return are_equivalent(reconstruction, original_subbed)
+
+def extract_object(word):
+
+	split_word = word.split()
+	if len(split_word) <= 1:
+		return word
+
+	if split_word[1] in ["of", "the"]:
+		return split_word[0]
+
+	else:
+		return split_word[1]

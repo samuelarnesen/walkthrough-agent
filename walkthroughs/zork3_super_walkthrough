@@ -110,8 +110,8 @@ Open the east door, then go north into the museum. Look at the gold machine (tim
 >open east door
 >go north
 >set dial to 776
->push gold machine south
->push gold machine east
+>push gold machine to south
+>push gold machine to east
 >enter gold machine
 >push button
 >wait
