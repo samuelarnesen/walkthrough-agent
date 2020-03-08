@@ -1,10 +1,15 @@
+from parse_walkthrough import SuperWalkthrough
+from jericho import *
 
-weird_list = [124, 12414, 45345, None, 2313, 3523, None ,12145, 3463434, None, None, 23]
+rom_list = ["../z-machine-games-master/jericho-game-suite/zork1.z5", "../z-machine-games-master/jericho-game-suite/zork2.z5", "../z-machine-games-master/jericho-game-suite/zork3.z5"]
+wt_list = ["../walkthroughs/zork_super_walkthrough", "../walkthroughs/zork2_super_walkthrough", "../walkthroughs/zork3_super_walkthrough"]
 
-transformed = list(i for i, item in enumerate(weird_list) if item is not None)
 
+swt = SuperWalkthrough(wt_list, rom_list)
 
-print(transformed)
+for section in swt.section_generator():
+	pass
+
 
 
 """

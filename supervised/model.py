@@ -72,8 +72,8 @@ class TimeModel(nn.Module):
 
 		encoded_state = self.state_encoder(self.embeddings, state)
 
-		full_instruction_encoder_output, word_weights = self.instruction_encoder(self.embeddings, instruction, encoded_state, previous_attention=previous_word_attention)
-		attended_instruction, sentence_weights = self.attender(full_instruction_encoder_output, encoded_state, previous_sentence_attention)
+		full_instruction_encoder_output, word_weights, sentence_lengths = self.instruction_encoder(self.embeddings, instruction, encoded_state, previous_word_attention)
+		attended_instruction, sentence_weights = self.attender(full_instruction_encoder_output, encoded_state, previous_sentence_attention, sentence_lengths)
 
 		q_t = self.t_scorer(attended_instruction, encoded_state)
 		q_o1 = self.o1_scorer(attended_instruction, encoded_state, [q_t.detach()])

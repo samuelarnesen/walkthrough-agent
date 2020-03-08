@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
+import numpy as np
+import sys
 
 
 class Attender(nn.Module):
@@ -52,29 +54,45 @@ class TimeAttender(Attender):
 		super(TimeAttender, self).__init__(hidden_size)
 		self.max_number_of_entries = max_number_of_entries
 		self.attention = nn.Linear(hidden_size * 2, hidden_size * 2)
-		self.time_attention = nn.Linear(max_number_of_entries, self.max_number_of_entries)
 
-	def forward(self, encoder_outputs, state, previous_attention):
+		kernel_size = int(max_number_of_entries / 14) if int(max_number_of_entries / 14) % 2 == 1 else int(max_number_of_entries / 14) + 1
+		self.time_attention = nn.Conv1d(1, 1, kernel_size=kernel_size, padding=int(kernel_size / 2))
+		self.time_attention.weight = nn.Parameter(torch.ones([1, 1, self.time_attention.kernel_size[0]], requires_grad=True))
+		self.time_attention.bias = nn.Parameter(torch.zeros([1], requires_grad=True))
+
+	def forward(self, encoder_outputs, state, previous_attention, sentence_lengths=None):
+
+		def generate_masks(previous_attention, sentence_lengths):
+			bool_tensor = torch.zeros(previous_attention.size(), requires_grad=False)
+			for i, length in enumerate(sentence_lengths):
+				for j in range(length):
+					bool_tensor[i, j] = 1
+
+			return bool_tensor
 
 		sequence_length, batch_size, encoded_size = encoder_outputs.size()
 
 		if type(previous_attention[0]) == type(None):
 			previous_attention = torch.zeros([batch_size, sequence_length])
-			previous_attention[0, :] = torch.ones([sequence_length])
+			previous_attention[:, 0] = torch.ones([batch_size])
+			previous_attention.requires_grad_()
 
 		weights = self.get_non_normalized_weights(encoder_outputs, state)
+		adjusted_previous_weights = F.relu(self.time_attention(previous_attention.unsqueeze(1)).squeeze(1))
+		if sentence_lengths != None:
+			mask = generate_masks(previous_attention, sentence_lengths)
+			adjusted_previous_weights *= mask
+		previous_attention_probs = adjusted_previous_weights / torch.sum(adjusted_previous_weights, dim=1).unsqueeze(1)
 
-		adjusted_previous_weights = self.time_attention(previous_attention)
-		truncated_apw = adjusted_previous_weights[:, 0:sequence_length]
-		previous_attention_probs = F.softmax(truncated_apw, dim=0)
-
-		#print(encoder_outputs.size(), weights.size(), previous_attention_probs.size(), previous_attention.size())
-
-		adjusted_weights = previous_attention_probs * weights
-		normalized_weights_tensor = F.softmax(weights, dim=1)
-
-
+		adjusted_weights = previous_attention_probs * F.softmax(weights, dim=1)
+		normalized_weights_tensor = adjusted_weights / torch.sum(adjusted_weights, dim=1).unsqueeze(dim=1)
 
 		attention_applied = torch.bmm(normalized_weights_tensor.unsqueeze(dim=1), encoder_outputs.permute(1, 0, 2))
 
 		return attention_applied.squeeze(dim=1), normalized_weights_tensor
+
+
+
+
+
+

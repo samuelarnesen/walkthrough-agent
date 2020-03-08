@@ -1,6 +1,6 @@
 from jericho import *
 from torch.utils.data import Dataset
-import copy, re
+import copy, re, sys
 import sentencepiece as spm
 import numpy as np
 import torch 
@@ -87,23 +87,18 @@ class SuperWalkthrough:
 		self.observations = []
 		self.actions = []
 		self.descriptions = []
-		self.wt = None
+		self.wt = []
 		self.section_num = 0 # for iterator
 		self.internal_num = -1 # for iterator
 		self.start = True # for iterator
+		self.number_of_sections = 0
 
 		if filename != None and rom_path != None:
 			self.load_from_walkthrough(filename, rom_path)
 
-	def load_from_walkthrough(self, wt_filename, rom_path):
+	def load_from_walkthrough(self, wt_filenames, rom_paths):
 
-		self.wt = Walkthrough(wt_filename)
-		sections = self.wt.get_sections()
-		bindings = load_bindings(rom_path)
-		seed = bindings["seed"]
-		env = FrotzEnv(rom_path, seed=seed)
-
-		def add(observation, items, location, action):
+		def add(observation, items, location, action, start):
 			self.observations.append(observation.rstrip(" \n"))
 			item_list = []
 			for item in items:
@@ -119,43 +114,60 @@ class SuperWalkthrough:
 			total_description = self.observations[-1] + " | " + inventories_str + \
 					" | " + self.locations[-1] + " | " + self.actions[-1]
 
-			if len(self.descriptions[-1]) == len(sections[len(self.descriptions) - 1]["List"]):
+			#if len(self.descriptions[-1]) == len(sections[len(self.descriptions) - 1]["List"]):
+			if start:
 				self.descriptions.append([])
+				self.number_of_sections += 1
 
 			self.descriptions[-1].append(total_description)
 
+		if type(wt_filenames) != type([]):
+			wt_filenames = [wt_filenames]
+		if type(rom_paths) != type([]):
+			rom_paths = [rom_paths]
 
-		self.descriptions.append([])
-		observation, _ = env.reset()
-		items = env.get_inventory()
-		location = env.get_player_location()
-		add(observation, items, location.name, "")
+		for wt_filename, rom_path in zip(wt_filenames, rom_paths):
 
-		location_descriptions = {}
+			self.wt.append(Walkthrough(wt_filename))
+			sections = self.wt[-1].get_sections()
+			bindings = load_bindings(rom_path)
+			seed = bindings["seed"]
+			env = FrotzEnv(rom_path, seed=seed)
 
-		for section in self.wt.get_sections():
-			for action in section["List"]:
-				observation, _, _, _ = env.step(action)
-				items = env.get_inventory()
-				location = env.get_player_location()
+			observation, _ = env.reset()
+			items = env.get_inventory()
+			location = env.get_player_location()
+			add(observation, items, location.name, "", True) # fix
 
-				if location.name not in location_descriptions and location.name in observation:
-					generic_description = "\n".join(observation.split("\n\n")[0:2])
-					location_descriptions[location.name] = generic_description[generic_description.index(location.name):]
+			location_descriptions = {}
 
-				if observation.rstrip(" \n") == location.name:
-					observation = location_descriptions[location.name]
+			for i, section in enumerate(sections):
+				for j, action in enumerate(section["List"]):
+					observation, _, _, _ = env.step(action)
+					items = env.get_inventory()
+					location = env.get_player_location()
 
-				add(observation, items, location.name, action)
+					if location.name not in location_descriptions and location.name in observation:
+						generic_description = "\n".join(observation.split("\n\n")[0:2])
+						location_descriptions[location.name] = generic_description[generic_description.index(location.name):]
 
-		self.descriptions.pop()
-		env.close()
+					if observation.rstrip(" \n") == location.name:
+						observation = location_descriptions[location.name]
+
+					add(observation, items, location.name, action, j==len(section["List"])-1)
+
+			self.descriptions.pop()
+			env.close()
 
 	def get_state_descriptions(self):
 		return self.descriptions
 
 	def get_instructions(self):
-		return self.wt.get_sections()
+		sections = []
+		for ind_wt in self.wt:
+			for section in ind_wt.get_sections():
+				sections.append(section)
+		return sections	
 
 	def __iter__(self):
 		# potentially add resets here
@@ -165,39 +177,47 @@ class SuperWalkthrough:
 		return self
 
 	def __next__(self):
-		section = self.wt.get_section(self.section_num)
-		self.internal_num = (self.internal_num + 1) % len(section["List"])
 
-		if self.internal_num == 0 and not self.start:
-			self.section_num += 1
-			if self.section_num >= self.wt.get_number_of_sections():
-				raise StopIteration
-			section = self.wt.get_section(self.section_num)
+		for wt in self.wt:
+			section = wt.get_section(self.section_num)
+			self.internal_num = (self.internal_num + 1) % len(section["List"])
 
-		instruction = section["Text"]
-		state = self.descriptions[self.section_num][self.internal_num]
-		action = section["List"][self.internal_num]
-		self.start = False
+			if self.internal_num == 0 and not self.start:
+				self.section_num += 1
+				if self.section_num >= self.number_of_sections:
+					raise StopIteration
+				section = wt.get_section(self.section_num)
+
+			instruction = section["Text"]
+			state = self.descriptions[self.section_num][self.internal_num]
+			action = section["List"][self.internal_num]
+			self.start = False
 
 		return instruction, state, action, self.internal_num == 0
 
 	def section_generator(self):
 
-		sections = self.wt.get_sections()
 		longest_section_length = -1
-		for i in range(len(sections)):
-			longest_section_length = max(longest_section_length, self.wt.get_length_of_section(i))
+		section_lengths = []
+		for wt in self.wt:
+			sections = wt.get_sections()
+			for i in range(len(sections)):
+				longest_section_length = max(longest_section_length, wt.get_length_of_section(i))
+				section_lengths.append(wt.get_length_of_section(i))
 
 		for i in range(longest_section_length):
 			pairs = []
-			for j, section in enumerate(sections):
-				if i < self.wt.get_length_of_section(j):
-					pairs.append([section["Text"], self.descriptions[j][i], section["List"][i], i==0])
-				else:
-					pairs.append(None)
+			section_base = 0
+			for wt in self.wt:
+				sections = wt.get_sections()
+				for j, section in enumerate(sections):
+					if i < section_lengths[section_base + j]:
+						pairs.append([section["Text"], self.descriptions[section_base + j][i], section["List"][i], i==0])
+					else:
+						pairs.append(None)
+				section_base += len(sections)
 
 			yield pairs
-
 
 
 class Walkthrough_Dataset(Dataset):

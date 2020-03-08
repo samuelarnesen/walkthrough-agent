@@ -1,4 +1,4 @@
-from parse_walkthrough import Walkthrough_Dataset
+from parse_walkthrough import Walkthrough_Dataset, SuperWalkthrough
 from utils import *
 from model import BasicModel, TimeModel
 from jericho import *
@@ -16,7 +16,7 @@ import numpy as np
 import sentencepiece as spm
 #from sklearn.manifold import TSNE
 #import matplotlib.pyplot as plt
-import random, re, math
+import random, re, math, sys
 
 class Agent_Zork:
 
@@ -28,12 +28,15 @@ class Agent_Zork:
 		self.vocab, self.reverse_vocab = load_vocab(args["rom_path"], args["add_word_path"])
 		self.batch_size = args["batch_size"]
 		self.num_epochs = args["num_epochs"]
+		self.rom_paths = args["rom_path"]
+		self.walkthrough_filenames = args["walkthrough_filename"]
 		self.clip = args["clip"]
 		self.learning_rate = args["learning_rate"]
 		self.save_name = save_name
 		self.o1_start = args["o1_start"]
 		self.o2_start = args["o2_start"]
 
+		# only relevant for if model is of the basic type -- splits the data into training, validation, and testing
 		if index_file_name == None:
 			shuffled_idxs = list(range(len(self.data)))
 			random.shuffle(shuffled_idxs)
@@ -64,12 +67,15 @@ class Agent_Zork:
 			"max_number_of_words": args["max_number_of_words"]
 		}
 		self.model = BasicModel(self.model_args).to(self.device) if model_type == "basic" else TimeModel(self.model_args).to(self.device)
-		self.optimizer = optim.Adam(self.model.parameters(), lr=args["learning_rate"]) 
+		self.optimizer = optim.Adam(self.model.parameters(), lr=args["learning_rate"])
 
 		if model_name != None:
 			self.model.load_state_dict(torch.load(model_name))
 
 	def train(self):
+		"""
+		trains and validates the model
+		"""
 		if self.model.get_name() == "basic":
 			self.train_basic()
 		elif self.model.get_name() == "time":
@@ -78,100 +84,146 @@ class Agent_Zork:
 			print("METHOD NOT AVAILABLE")
 
 	def train_time(self, track_accuracy=False):
+		"""
+		training time model
+		"""
 
 		def get_pct(correct, guesses):
+			"""
+			checks how many of the guesses are correct
+			"""
 			correct_count = 0
 			for i, correct_item in enumerate(correct):
 				if guesses[i] == correct_item:
 					correct_count += 1
+					print("hey sometihng is right")
 			return correct_count
 
 		def get_accuracy_of_batch(q_ts, q_o1s, q_o2s, correct_ts, correct_o1s, correct_o2s):
-			t, o1, o2 = torch.argmax(q_ts, dim=1), torch.argmax(q_o1s, dim=1), torch.argmax(q_o2s, dim=1)
+			"""
+			gets the accuracy of the entire batch -- only calculates for the template at the moment
+			"""
+			t = torch.argmax(q_ts, dim=0)
 			return get_pct(correct_ts, t)
 
 		def get_object_index(obj_indices):
+			"""
+			gets the index in the vocabulary of the object in multi-word object (e.g. "Dungeon Master" -> "Master")
+			"""
 			full_word = " ".join(self.vocab[idx] for idx in obj_indices)
 			keyword = extract_object(full_word)
 			if len(keyword) == 0:
 				return None
 			return self.reverse_vocab[keyword]
 
-		t_criterion = nn.NLLLoss()
-		o1_criterion = nn.NLLLoss()
-		o2_criterion = nn.NLLLoss()
+		def get_indices(pair, sentence_atts=[], word_atts=[]):
+			"""
+			gets the sections from the pair
+			"""
+			states = []
+			instructions = []
+			template_idxs = []
+			o1_idxs = []
+			o2_idxs = []
+			sections_used = []
+			sections_missing = []
+			for i, section in enumerate(pair):
+				if section != None:
+					sections_used.append(i)
+					instructions.append(section[0])
+					states.append(section[1])
+					template_idx, o1_idx, o2_idx = self.identify_components(section[2])
+
+					template_idxs.append(template_idx)
+					o1_idxs.append(get_object_index(o1_idx))
+					o2_idxs.append(get_object_index(o2_idx))
+					if section[3]:
+						sentence_atts.append(None)
+						word_atts.append(None)
+				else:
+					sections_missing.append(i)
+			return states, instructions, template_idxs, o1_idxs, o2_idxs, sections_used, sections_missing, sentence_atts, word_atts
+
+		def get_loss(qs, idxs, criterion):
+			sections = list(i for i, item in enumerate(idxs) if item is not None)
+			if len(sections) > 0:
+				idxs_to_use = torch.tensor(sections, dtype=torch.long)
+				qs_to_use = torch.index_select(qs, 0, idxs_to_use)
+
+				return o1_criterion(qs_to_use, idxs_to_use), qs_to_use
+			return 0, None
+
+		def execute_epoch(swt, t_criterion, o1_criterion, o2_criterion):
+			t_loss = []
+			o1_loss = []
+			o2_loss = []
+
+			sentence_atts = []
+			word_atts = []
+			num_examples = {"t": 0, "o1": 0, "o2": 0}
+			correct_count = 0
+			for i, pair in enumerate(swt.section_generator()):
+
+				if i > 30:
+					break
+
+				states, instructions, template_idxs, o1_idxs, o2_idxs, sections_used, sections_missing, sentence_atts, word_atts = get_indices(pair, sentence_atts, word_atts)
+
+				sentence_atts = torch.index_select(sentence_atts, 0, torch.tensor(sections_used, dtype=torch.long)) if torch.is_tensor(sentence_atts) else sentence_atts
+				word_atts = torch.index_select(word_atts, 0, torch.tensor(sections_used, dtype=torch.long)) if torch.is_tensor(word_atts) else word_atts
+				q_ts, q_o1s, q_o2s, sentence_atts, word_atts = self.model(states, instructions, sentence_atts, word_atts)
+
+				batch_t_loss, _ = get_loss(q_ts, template_idxs, t_criterion)
+				batch_o1_loss, q_o1s_to_use = get_loss(q_o1s, o1_idxs, o1_criterion)
+				batch_o2_loss, q_o2s_to_use = get_loss(q_o2s, o2_idxs, o2_criterion)
+
+				t_loss.append(batch_t_loss)
+				o1_loss.append(batch_o1_loss)
+				o2_loss.append(batch_o2_loss)
+
+				with torch.no_grad():
+					correct_count += get_accuracy_of_batch(q_ts, q_o1s_to_use if len(o1_idxs) > 0 else None, q_o2s_to_use if len(o2_idxs) > 0 else None, template_idxs, o1_idxs, o2_idxs)
+				num_examples["t"] += len(template_idxs)
+				num_examples["o1"] += len(o1_idxs)
+				num_examples["o2"] += len(o2_idxs)
+
+				for i in sections_missing:
+					sentence_atts = torch.cat([sentence_atts[0:i, :], torch.zeros([1, self.model_args["max_number_of_sentences"]]), sentence_atts[i:, :]])
+					word_atts = torch.cat([word_atts[0:i, :, :], torch.zeros([1, self.model_args["max_number_of_sentences"], self.model_args["max_number_of_words"]]), word_atts[i:, :, :]])
+
+			return sum(t_loss), sum(o1_loss), sum(o2_loss), num_examples, correct_count
+
+		def backward(total_t_loss, total_o1_loss, total_o2_loss, num_examples):
+			total_t_loss.backward() 
+			self.optimizer.step()
+			self.optimizer.zero_grad()
+
+		## ACTUAL EXECUTION CODE
+
+		t_criterion = nn.NLLLoss(reduction='sum')
+		o1_criterion = nn.NLLLoss(reduction='sum')
+		o2_criterion = nn.NLLLoss(reduction='sum')
+
+		train_swt = SuperWalkthrough(self.walkthrough_filenames[0:-1], self.rom_paths[0:-1])
+		val_swt = SuperWalkthrough([self.walkthrough_filenames[-1]], [self.rom_paths[-1]])
+
+
+		with torch.no_grad():
+			total_t_loss, total_o1_loss, total_o2_loss, num_examples, correct_count = execute_epoch(val_swt, t_criterion, o1_criterion, o2_criterion)
+			print("Val", str(0), "\t", total_t_loss.item() / num_examples["t"], "\t", correct_count / num_examples["t"])
+			self.optimizer.zero_grad()
+
 
 		for epoch in range(self.num_epochs):
-
-			for wt_num, wt in enumerate(self.data.walkthroughs):
-				t_loss = torch.zeros([1]).to(self.device)
-				o1_loss = torch.zeros([1]).to(self.device)
-				o2_loss = torch.zeros([1]).to(self.device)
-				sentence_atts = []
-				word_atts = []
-				num_examples = {"t": 0, "o1": 0, "o2": 0}
-				correct_count = 0
-				for pair in wt.section_generator():
-					# pair set up is instruction, state, action, start
-					states = []
-					instructions = []
-					template_idxs = []
-					o1_idxs = []
-					o2_idxs = []
-					sections_used = []
-					sections_missing = []
-					for i, section in enumerate(pair):
-						if section != None:
-							sections_used.append(i)
-							instructions.append(section[0])
-							states.append(section[1])
-							template_idx, o1_idx, o2_idx = self.identify_components(section[2])
-
-							template_idxs.append(template_idx)
-							o1_idxs.append(get_object_index(o1_idx))
-							o2_idxs.append(get_object_index(o2_idx))
-							if section[3]:
-								sentence_atts.append(None)
-								word_atts.append(None)
-						else:
-							sections_missing.append(i)
-
-					sentence_atts = torch.index_select(sentence_atts, 0, torch.tensor(sections_used, dtype=torch.long)) if torch.is_tensor(sentence_atts) else sentence_atts
-					q_ts, q_o1s, q_o2s, sentence_atts, word_atts = self.model(states, instructions, sentence_atts, word_atts)
-
-					o1_sections = list(i for i, item in enumerate(o1_idxs) if item is not None)
-					o2_sections = list(i for i, item in enumerate(o2_idxs) if item is not None)
-					t_loss = torch.add(t_loss, torch.mul(t_criterion(q_ts, torch.tensor(template_idxs, dtype=torch.long)), len(template_idxs)))
-					if len(o1_sections) > 0:
-						o1_idxs_to_use = torch.tensor(o1_sections, dtype=torch.long)
-						q_o1s_to_use = torch.index_select(q_o1s, 0, o1_idxs_to_use)
-						o1_loss = torch.add(o1_loss, torch.mul(o1_criterion(q_o1s_to_use, o1_idxs_to_use), len(o1_idxs)))
-					if len(o2_sections) > 0:
-						o2_idxs_to_use = torch.tensor(o2_sections, dtype=torch.long)
-						q_o2s_to_use = torch.index_select(q_o2s, 0, o2_idxs_to_use)
-						o2_loss = torch.add(o2_loss, torch.mul(o2_criterion(q_o2s_to_use, o2_idxs_to_use), len(o2_idxs)))
-
-					with torch.no_grad():
-						correct_count += get_accuracy_of_batch(q_ts, q_o1s_to_use if len(o1_idxs) > 0 else None, q_o2s_to_use if len(o2_idxs) > 0 else None, template_idxs, o1_idxs, o2_idxs)
-					num_examples["t"] += len(template_idxs)
-					num_examples["o1"] += len(o1_idxs)
-					num_examples["o2"] += len(o2_idxs)
-
-					for i in sections_missing:
-						sentence_atts = torch.cat([sentence_atts[0:i, :], torch.zeros([1, self.model_args["max_number_of_sentences"]]), sentence_atts[i:, :]])
-						word_atts = torch.cat([word_atts[0:i, :, :], torch.zeros([1, self.model_args["max_number_of_sentences"], self.model_args["max_number_of_words"]]), word_atts[i:, :, :]])
-
-				t_loss = torch.div(t_loss, num_examples["t"])
-				o1_loss = torch.div(o1_loss, num_examples["o1"])
-				o2_loss = torch.div(o2_loss, num_examples["o2"])
-				print(str(epoch) + "." + str(wt_num), "\t", t_loss.item(), "\t", correct_count / num_examples["t"])
-				t_loss.backward() # test whether this is necessary
-				utils.clip_grad_norm_(self.model.parameters(), self.clip)
-				self.optimizer.step()
-				self.optimizer.zero_grad()
-
-
+			total_t_loss, total_o1_loss, total_o2_loss, num_examples, correct_count = execute_epoch(train_swt, t_criterion, o1_criterion, o2_criterion)
+			backward(total_t_loss, total_o1_loss, total_o2_loss, num_examples)
+			print("Train", str(epoch), "\t", total_t_loss.item() / num_examples["t"], "\t", correct_count / num_examples["t"])
 			torch.save(self.model.state_dict(), self.save_name)
+
+			with torch.no_grad():
+				total_t_loss, total_o1_loss, total_o2_loss, num_examples, correct_count = execute_epoch(val_swt, t_criterion, o1_criterion, o2_criterion)
+				print("Val", str(epoch), "\t", total_t_loss.item() / num_examples["t"], "\t", correct_count / num_examples["t"])
+				self.optimizer.zero_grad()
 					
 	def train_basic(self):
 
@@ -436,18 +488,30 @@ class Agent_Zork:
 			return template_string.replace('OBJ', find_replacement_string(o1), 1)\
 				.replace('OBJ', find_replacement_string(o2), 1)
 
-	def get_objects(self):
+	def visualize_attention(self):
 
-		for wt in self.data.walkthroughs:
-			for pair in wt:
-				# pair set up is instruction, state, action, start
-				action = pair[2]
-				template_idx, o1_idx, o2_idx = self.identify_components(action)
+		wt = self.data.walkthroughs[0]
+		sentence_atts = [None]
+		word_atts = [None]
+		count = 0
+		print(self.model.attender.time_attention.weight)
+		print(self.model.attender.time_attention.bias)
+		print(self.model.instruction_encoder.attender.time_attention.weight)
+		print(self.model.instruction_encoder.attender.time_attention.bias)
 
-				if len(o1_idx) > 1:
-					print(extract_object(" ".join(self.vocab[idx] for idx in o1_idx)))
-				if len(o2_idx) > 1:
-					print(extract_object(" ".join(self.vocab[idx] for idx in o2_idx)))
+		print()
+
+		for instruction, state, action, start in wt:
+			if count != 0 and start:
+				break
+
+			q_ts, q_o1s, q_o2s, sentence_atts, word_atts = self.model([state], [instruction], sentence_atts, word_atts)
+			sa = sentence_atts.detach().numpy()
+			for element in sa[0]:
+				print(element, end="\t")
+			print()
+			count += 1
+
 
 if __name__ == "__main__":
 
@@ -460,7 +524,7 @@ if __name__ == "__main__":
 		"walkthrough_filename": ["../walkthroughs/zork_super_walkthrough", "../walkthroughs/zork2_super_walkthrough", "../walkthroughs/zork3_super_walkthrough"],
 		"clip": 40,
 		"batch_size": 64,
-		"learning_rate": 0.001,
+		"learning_rate": 0.002, # originally 0.001
 		"num_epochs": 300,
 		"o1_start": 150,
 		"o2_start": 200,
@@ -470,8 +534,8 @@ if __name__ == "__main__":
 		"max_number_of_words": 100
 	}
 
-	agent = Agent_Zork(args, model_name="./models/timemodel1.pt", model_type="time", save_name="./models/timemodel2.pt")
-	#agent.get_objects()
+	agent = Agent_Zork(args, model_type="time", save_name="./models/timemodel2.pt")
+	#agent.visualize_attention()
 	agent.train()
 	#agent.find_accuracy(agent.train_data, print_examples=True)
 	#agent.visualize_embeddings()
