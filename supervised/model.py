@@ -7,6 +7,7 @@ import sentencepiece as spm
 from utils import *
 from attender import BasicAttender, TimeAttender
 from encoders import StateEncoder, InstructionEncoder
+import sys
 
 class BasicModel(nn.Module):
 

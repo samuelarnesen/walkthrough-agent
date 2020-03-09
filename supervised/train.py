@@ -61,7 +61,7 @@ class Agent_Zork:
 			"template_size": len(self.templates),
 			"spm_path": args["spm_path"],
 			"vocab_size": len(sp),
-			"output_vocab_size": len(self.vocab),
+			"output_vocab_size": len(self.vocab) + 2,
 			"batch_size": args["batch_size"],
 			"max_number_of_sentences": args["max_number_of_sentences"],
 			"max_number_of_words": args["max_number_of_words"]
@@ -96,14 +96,15 @@ class Agent_Zork:
 			for i, correct_item in enumerate(correct):
 				if guesses[i] == correct_item:
 					correct_count += 1
-					print("hey sometihng is right")
+
 			return correct_count
 
 		def get_accuracy_of_batch(q_ts, q_o1s, q_o2s, correct_ts, correct_o1s, correct_o2s):
 			"""
 			gets the accuracy of the entire batch -- only calculates for the template at the moment
 			"""
-			t = torch.argmax(q_ts, dim=0)
+			t = torch.argmax(q_ts, dim=1)
+
 			return get_pct(correct_ts, t)
 
 		def get_object_index(obj_indices):
@@ -137,6 +138,7 @@ class Agent_Zork:
 					template_idxs.append(template_idx)
 					o1_idxs.append(get_object_index(o1_idx))
 					o2_idxs.append(get_object_index(o2_idx))
+
 					if section[3]:
 						sentence_atts.append(None)
 						word_atts.append(None)
@@ -145,15 +147,24 @@ class Agent_Zork:
 			return states, instructions, template_idxs, o1_idxs, o2_idxs, sections_used, sections_missing, sentence_atts, word_atts
 
 		def get_loss(qs, idxs, criterion):
+			"""
+			gets loss given guesses and correct ones
+			"""
+
 			sections = list(i for i, item in enumerate(idxs) if item is not None)
+			idxs_without_nones = list(item for item in idxs if item is not None)
 			if len(sections) > 0:
 				idxs_to_use = torch.tensor(sections, dtype=torch.long)
 				qs_to_use = torch.index_select(qs, 0, idxs_to_use)
 
-				return o1_criterion(qs_to_use, idxs_to_use), qs_to_use
+				return criterion(qs_to_use, torch.tensor(idxs_without_nones, dtype=torch.long)), qs_to_use
 			return 0, None
 
 		def execute_epoch(swt, t_criterion, o1_criterion, o2_criterion):
+			"""
+			makes predictions and calculates loss
+			"""
+
 			t_loss = []
 			o1_loss = []
 			o2_loss = []
@@ -172,7 +183,7 @@ class Agent_Zork:
 				sentence_atts = torch.index_select(sentence_atts, 0, torch.tensor(sections_used, dtype=torch.long)) if torch.is_tensor(sentence_atts) else sentence_atts
 				word_atts = torch.index_select(word_atts, 0, torch.tensor(sections_used, dtype=torch.long)) if torch.is_tensor(word_atts) else word_atts
 				q_ts, q_o1s, q_o2s, sentence_atts, word_atts = self.model(states, instructions, sentence_atts, word_atts)
-
+				
 				batch_t_loss, _ = get_loss(q_ts, template_idxs, t_criterion)
 				batch_o1_loss, q_o1s_to_use = get_loss(q_o1s, o1_idxs, o1_criterion)
 				batch_o2_loss, q_o2s_to_use = get_loss(q_o2s, o2_idxs, o2_criterion)
@@ -194,9 +205,21 @@ class Agent_Zork:
 			return sum(t_loss), sum(o1_loss), sum(o2_loss), num_examples, correct_count
 
 		def backward(total_t_loss, total_o1_loss, total_o2_loss, num_examples):
+			"""
+			updates parameters
+			"""
 			total_t_loss.backward() 
 			self.optimizer.step()
 			self.optimizer.zero_grad()
+
+		def validate(val_swt, t_criterion, o1_criterion, o2_criterion):
+			""" 
+			validate
+			"""
+			with torch.no_grad():
+				total_t_loss, total_o1_loss, total_o2_loss, num_examples, correct_count = execute_epoch(val_swt, t_criterion, o1_criterion, o2_criterion)
+				print("Val", str(0), "\t", total_t_loss.item() / num_examples["t"], "\t", correct_count / num_examples["t"])
+				self.optimizer.zero_grad()
 
 		## ACTUAL EXECUTION CODE
 
@@ -208,22 +231,14 @@ class Agent_Zork:
 		val_swt = SuperWalkthrough([self.walkthrough_filenames[-1]], [self.rom_paths[-1]])
 
 
-		with torch.no_grad():
-			total_t_loss, total_o1_loss, total_o2_loss, num_examples, correct_count = execute_epoch(val_swt, t_criterion, o1_criterion, o2_criterion)
-			print("Val", str(0), "\t", total_t_loss.item() / num_examples["t"], "\t", correct_count / num_examples["t"])
-			self.optimizer.zero_grad()
-
+		validate(val_swt, t_criterion, o1_criterion, o2_criterion)
 
 		for epoch in range(self.num_epochs):
 			total_t_loss, total_o1_loss, total_o2_loss, num_examples, correct_count = execute_epoch(train_swt, t_criterion, o1_criterion, o2_criterion)
 			backward(total_t_loss, total_o1_loss, total_o2_loss, num_examples)
 			print("Train", str(epoch), "\t", total_t_loss.item() / num_examples["t"], "\t", correct_count / num_examples["t"])
 			torch.save(self.model.state_dict(), self.save_name)
-
-			with torch.no_grad():
-				total_t_loss, total_o1_loss, total_o2_loss, num_examples, correct_count = execute_epoch(val_swt, t_criterion, o1_criterion, o2_criterion)
-				print("Val", str(epoch), "\t", total_t_loss.item() / num_examples["t"], "\t", correct_count / num_examples["t"])
-				self.optimizer.zero_grad()
+			validate(val_swt, t_criterion, o1_criterion, o2_criterion)
 					
 	def train_basic(self):
 
@@ -524,7 +539,7 @@ if __name__ == "__main__":
 		"walkthrough_filename": ["../walkthroughs/zork_super_walkthrough", "../walkthroughs/zork2_super_walkthrough", "../walkthroughs/zork3_super_walkthrough"],
 		"clip": 40,
 		"batch_size": 64,
-		"learning_rate": 0.002, # originally 0.001
+		"learning_rate": 0.004, # originally 0.001
 		"num_epochs": 300,
 		"o1_start": 150,
 		"o2_start": 200,
@@ -534,7 +549,7 @@ if __name__ == "__main__":
 		"max_number_of_words": 100
 	}
 
-	agent = Agent_Zork(args, model_type="time", save_name="./models/timemodel2.pt")
+	agent = Agent_Zork(args, model_type="time", save_name="./models/timemodel3.pt")
 	#agent.visualize_attention()
 	agent.train()
 	#agent.find_accuracy(agent.train_data, print_examples=True)
