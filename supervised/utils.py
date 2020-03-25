@@ -1,25 +1,55 @@
 import torch
 import numpy as np
+from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
 from jericho import *
 from jericho.template_action_generator import TemplateActionGenerator
+import sys
 
 
-def convert_batch_to_tokens(batch, max_sequence, device, sp):
+def convert_batch_to_tokens(batch, max_sequence, device, sp, embeddings=None):
 	np_list = []
+	lengths_list = []
 
 	for example in batch:
-		np_list.append(convert_to_tokens(example, max_sequence, sp))
+		tokens, lengths = convert_to_tokens(example, max_sequence, sp)
+		np_list.append(tokens)
+		lengths_list.append(lengths)
 
-	return torch.tensor(data=np.asarray(np_list, dtype=np.float16), dtype=torch.long, device=device)
+	batch_size = len(batch)
+	split_size = len(lengths_list[0])
+	token_lists = [[] for i in range(split_size)]
+	flipped_lengths_list = [[] for i in range(split_size)]
+
+	for i in range(split_size):
+		for j in range(batch_size):
+			if type(embeddings) != type(None):
+				token_lists[i].append(embeddings(np_list[j][i]))
+			else:
+				token_lists[i].append(np_list[j][i])
+			flipped_lengths_list[i].append(lengths_list[j][i])
+
+		padded = pad_sequence(token_lists[i], batch_first=True)
+		packed = pack_padded_sequence(padded, flipped_lengths_list[i], batch_first=True, enforce_sorted=False)
+
+		token_lists[i] = packed
+
+	if len(token_lists) == 1:
+		return token_lists[0]
+	return token_lists
+
 
 def convert_to_tokens(text, max_sequence, sp):
+
+	lengths = []
 	split_text = text.split("|")
-	token_array = np.zeros([len(split_text), max_sequence])
+	token_list = []
 	for i, sequence in enumerate(split_text):
 		enc_seq = sp.encode_as_ids("<s>" + sequence + "</s>")
-		for j, token in enumerate(enc_seq):
-			token_array[i][j] = np.int32(token)
-	return token_array
+		lengths.append(len(enc_seq))
+		token_list.append(torch.tensor(data=enc_seq, dtype=torch.long))
+
+	return token_list, lengths
+
 
 def tokenize_sentence(sp, sentence):
 	return sp.encode_as_ids(sentence)
@@ -139,3 +169,17 @@ def extract_object(word):
 
 	else:
 		return split_word[1]
+
+def pretty_print(input_tensor):
+	size = input_tensor.size()
+	for i in range(size[0]):
+		if len(size) > 1:
+			for j in range(size[1]):
+				print(input_tensor[i, j].item(), end="\t")
+			print()
+		else:
+			print(input_tensor[i].item(), end="\t")
+	print()
+
+def contains_nan(input_tensor):
+	return torch.sum(torch.isnan(input_tensor).double()) != 0

@@ -20,7 +20,7 @@ import random, re, math, sys
 
 class Agent_Zork:
 
-	def __init__(self, args, model_type="basic", model_name=None, index_file_name=None, save_name="basic_model.pt"):
+	def __init__(self, args, model_type="basic", model_name=None, index_file_name=None, save_name="./models/basic_model.pt"):
 
 		self.device = "cuda" if torch.cuda.is_available() else "cpu"
 		self.data = Walkthrough_Dataset(args["walkthrough_filename"], args["rom_path"])
@@ -160,6 +160,32 @@ class Agent_Zork:
 				return criterion(qs_to_use, torch.tensor(idxs_without_nones, dtype=torch.long)), qs_to_use
 			return 0, None
 
+		def get_class_weights(swt):
+			"""
+			get weights for each class
+			"""
+
+			t_freq = torch.zeros(len(self.templates))
+			o1_freq = torch.zeros(len(self.vocab) + 2)
+			o2_freq = torch.zeros(len(self.vocab) + 2)
+
+			for _, _, action, _ in swt:
+				t_idx, o1_seq, o2_seq = self.identify_components(action)
+				t_freq[t_idx] +=1
+				if len(o1_seq) > 0:
+					o1_freq[get_object_index(o1_seq)] += 1
+					if len(o2_seq) > 0:
+						o2_freq[get_object_index(o2_seq)] += 1
+
+			t_weight, o1_weight, o2_weight = torch.zeros(len(self.templates)), torch.zeros(len(self.vocab) + 2), torch.zeros(len(self.vocab) + 2)
+			for i in range(len(self.templates)):
+				t_weight[i] = 1 / (math.sqrt(t_freq[i]) if t_freq[i] > 0 else 1)
+			for i in range(len(self.vocab) + 2):
+				o1_weight[i] = 1 / (math.sqrt(o1_freq[i]) if o1_freq[i] > 0 else 1)
+				o2_weight[i] = 1 / (math.sqrt(o2_freq[i]) if o2_freq[i] > 0 else 1)
+
+			return t_weight, o1_weight, o2_weight
+
 		def execute_epoch(swt, t_criterion, o1_criterion, o2_criterion):
 			"""
 			makes predictions and calculates loss
@@ -183,6 +209,18 @@ class Agent_Zork:
 				sentence_atts = torch.index_select(sentence_atts, 0, torch.tensor(sections_used, dtype=torch.long)) if torch.is_tensor(sentence_atts) else sentence_atts
 				word_atts = torch.index_select(word_atts, 0, torch.tensor(sections_used, dtype=torch.long)) if torch.is_tensor(word_atts) else word_atts
 				q_ts, q_o1s, q_o2s, sentence_atts, word_atts = self.model(states, instructions, sentence_atts, word_atts)
+
+
+				"""
+				batch_size, num_templates = q_ts.size()
+				detached = q_ts.detach().numpy()
+				for i in range(batch_size):
+					for j in range(num_templates):
+						print(detached[i, j], end="\t")
+					print()
+				print()
+				"""
+
 				
 				batch_t_loss, _ = get_loss(q_ts, template_idxs, t_criterion)
 				batch_o1_loss, q_o1s_to_use = get_loss(q_o1s, o1_idxs, o1_criterion)
@@ -208,8 +246,12 @@ class Agent_Zork:
 			"""
 			updates parameters
 			"""
+
 			total_t_loss.backward() 
 			self.optimizer.step()
+			for parameter, data in self.model.named_parameters():
+				if "attender.initial" in parameter:
+					data = data.clamp(0, float("inf"))
 			self.optimizer.zero_grad()
 
 		def validate(val_swt, t_criterion, o1_criterion, o2_criterion):
@@ -222,16 +264,17 @@ class Agent_Zork:
 				self.optimizer.zero_grad()
 
 		## ACTUAL EXECUTION CODE
-
-		t_criterion = nn.NLLLoss(reduction='sum')
-		o1_criterion = nn.NLLLoss(reduction='sum')
-		o2_criterion = nn.NLLLoss(reduction='sum')
-
 		train_swt = SuperWalkthrough(self.walkthrough_filenames[0:-1], self.rom_paths[0:-1])
 		val_swt = SuperWalkthrough([self.walkthrough_filenames[-1]], [self.rom_paths[-1]])
 
+		t_weight, o1_weight, o2_weight = get_class_weights(train_swt)
+
+		t_criterion = nn.NLLLoss(weight=t_weight, reduction='sum')
+		o1_criterion = nn.NLLLoss(weight=o1_weight, reduction='sum')
+		o2_criterion = nn.NLLLoss(weight=o2_weight, reduction='sum')
 
 		validate(val_swt, t_criterion, o1_criterion, o2_criterion)
+
 
 		for epoch in range(self.num_epochs):
 			total_t_loss, total_o1_loss, total_o2_loss, num_examples, correct_count = execute_epoch(train_swt, t_criterion, o1_criterion, o2_criterion)
@@ -242,7 +285,7 @@ class Agent_Zork:
 					
 	def train_basic(self):
 
-		def update(indices_to_use, option_indices, values, criterion):
+		def update(indices_to_use, option_indices, values, criterion, retain=False):
 
 			if len(indices_to_use) == 0:
 				return
@@ -250,22 +293,34 @@ class Agent_Zork:
 			update_input = torch.index_select(values, 0, indices_to_use).requires_grad_()
 			update_target = torch.index_select(torch.tensor(option_indices, dtype=torch.long), 0, indices_to_use)
 
-			self.optimizer.zero_grad()
 			loss = criterion(update_input, update_target)
+
 			if math.isnan(loss.item()):
+
+				dim1, dim2 = update_input.size()
+				for i in range(dim1):
+					for j in range(dim2):
+						print(update_input[i, j].item(), end="\t")
+					print()
+				sys.exit()
 				return loss.item()
-			loss.backward(retain_graph=True)
-			utils.clip_grad_norm_(self.model.parameters(), self.clip)
+			loss.backward(retain_graph=retain)
+
 			self.optimizer.step()
+			self.optimizer.zero_grad()
 
 			return loss.item()
+
 
 		t_criterion = nn.NLLLoss()
 		o1_criterion = nn.NLLLoss()
 		o2_criterion = nn.NLLLoss()
 
-		train_sampler = WeightedRandomSampler(self.get_weights(self.train_data), num_samples=len(self.train_data))
-		train_dataloader = DataLoader(self.train_data, batch_size=self.batch_size, sampler=train_sampler, drop_last=True)
+		#train_sampler = WeightedRandomSampler(self.get_weights(self.train_data), num_samples=len(self.train_data))
+		#train_dataloader = DataLoader(self.train_data, batch_size=self.batch_size, sampler=train_sampler, drop_last=True)
+		train_dataloader = DataLoader(self.train_data, batch_size=self.batch_size, drop_last=False)
+
+
 
 		for epoch in range(self.num_epochs):
 
@@ -297,23 +352,23 @@ class Agent_Zork:
 
 				q_ts, q_o1s, q_o2s = self.model(states, instructions)
 
-				template_loss = update(torch.tensor(t_indices_to_use, dtype=torch.long), template_idxs, q_ts, t_criterion)
+				template_loss = update(torch.tensor(t_indices_to_use, dtype=torch.long), template_idxs, q_ts, t_criterion, retain=(epoch >= self.o1_start))
 				print(epoch, "\t", template_loss, end="\t")
 
 				if epoch >= self.o1_start:
-					o1_loss = update(torch.tensor(o1_indices_to_use, dtype=torch.long), o1_idxs, q_o1s, o1_criterion)
+					o1_loss = update(torch.tensor(o1_indices_to_use, dtype=torch.long), o1_idxs, q_o1s, o1_criterion, retain=(epoch >= self.o2_start))
 					print(o1_loss, end="\t")
 					if epoch >= self.o2_start:
-						o2_loss = update(torch.tensor(o2_indices_to_use, dtype=torch.long), o2_idxs, q_o2s, o2_criterion)
+						o2_loss = update(torch.tensor(o2_indices_to_use, dtype=torch.long), o2_idxs, q_o2s, o2_criterion, retain=False)
 						print(o2_loss, end="")
 
 				print()
 
-			if epoch % 10 == 0 and epoch != 0:
-				torch.save(self.model.state_dict(), self.save_name)
-				self.find_accuracy(self.train_data,  epoch)
+			#if epoch % 10 == 0 and epoch != 0:
+			torch.save(self.model.state_dict(), self.save_name)
+			self.find_accuracy(self.train_data, epoch)
 
-		self.find_accuracy(self.val_data, self.num_epochs)
+		#self.find_accuracy(self.val_data, self.num_epochs)
 		self.find_accuracy(self.train_data, self.num_epochs)
 		torch.save(self.model.state_dict(), self.save_name)
 
@@ -344,86 +399,29 @@ class Agent_Zork:
 	def find_accuracy(self, data, epoch=-1, print_examples=False):
 
 		criterion = nn.NLLLoss()
+		states = []
+		instructions = []
+		template_truths = []
 
-		def update(condition, correct, total, guess, actual):
-			if condition:
-				if guess == actual:
-					return correct + 1, total + 1
-				else:
-					return correct, total + 1
-			return correct, total
+		for (state, instruction), action in data:
+			states.append(state)
+			instructions.append(instruction)
+			template_truth, _, _ = self.identify_components(action)
+			template_truths.append(template_truth)
 
-		def get_loss(condition, loss_list, probabilities, correct):
-			if condition:
-				correct_idx_list = [correct[0]] if type(correct) == type([]) else [correct]
-				loss_list.append(criterion(probabilities, torch.tensor(correct_idx_list, dtype=torch.long)).item())
-			return loss_list
 
-		def get_average_loss(loss_list):
-			if len(loss_list) == 0:
-				return
-			return np.mean(np.asarray(loss_list))
+		t_guesses, o1_guesses, o2_guesses, t_prob, o1_prob, o2_prob = self.model.eval(states, instructions)
+		loss = criterion(t_prob, torch.tensor(template_truths, dtype=torch.long))
 
-		correct_templates = 0
-		total_templates = 0
-		correct_o1 = 0
-		total_o1 = 0
-		correct_o2 = 0
-		total_o2 = 0
+		correct = 0
+		total = 0
+		for i, guess in enumerate(t_guesses):
+			if guess == template_truths[i]:
+				correct += 1
+			total += 1
+		print("\t\tAccuracy:", correct, "/", total, "\n\t\tLoss:", loss.item(), "\n")
 
-		t_losses = []
-		o1_losses = []
-		o2_losses = []
-
-		template_counts = np.zeros(len(self.templates))
-		ranks = []
-
-		for i in range(len(data)):
-			(state, instruction), action = data[i]
-			template_truth, o1_truth, o2_truth = self.identify_components(action)
-			reconstruction = self.template_to_string(template_truth, o1_truth, o2_truth)
-
-			if are_equivalent(reconstruction, action):
-
-				template_guess, o1_guess, o2_guess, t_prob, o1_prob, o2_prob = self.model.eval([state], [instruction])
-				if print_examples:
-
-					t_prob_list = []
-					for i, template in enumerate(self.templates):
-						t_prob_list.append(t_prob[0, i].item())
-					sorted_ts = list(reversed(sorted(t_prob_list)))
-
-					rank = -1
-					for i, score in enumerate(sorted_ts):
-						if t_prob[0, template_truth].item() == score:
-							rank = i + 1
-
-					print(self.template_to_string(template_guess, o1_guess, o2_guess), "\t", reconstruction, "\t", rank)
-					ranks.append(rank)
-
-					if template_counts[template_truth] == 0:
-						template_counts[template_truth] = 1
-
-				else:
-					object_count = self.templates[template_truth].count("OBJ")
-					correct_templates, total_templates = update(True, correct_templates, total_templates, template_guess, template_truth)
-					correct_o1, total_o1 = update(object_count >= 1, correct_o1, total_o1, o1_guess, o1_truth)
-					correct_o2, total_o2 = update(object_count >= 2, correct_o2, total_o2, o2_guess, o2_truth)
-
-					t_losses = get_loss(True, t_losses, t_prob, template_truth)
-					o1_losses = get_loss(object_count >= 1, o1_losses, o1_prob, o1_truth)
-					o2_losses = get_loss(object_count >= 2, o2_losses, o2_prob, o2_truth)
-
-		if not print_examples:
-			if epoch >= 0:
-				print("\nEPOCH", epoch)
-			print("\tTemplates: \n\t\tAccuracy: ", correct_templates, "/", total_templates, "\n\t\tLoss", get_average_loss(t_losses))
-			print("\tObject 1: \n\t\tAccuracy: ", correct_o1, "/", total_o1, "\n\t\tLoss", get_average_loss(o1_losses))
-			print("\tObject 2: \n\t\tAccuracy", correct_o2, "/", total_o2, "\n\t\tLoss", get_average_loss(o2_losses))
-			print()
-		else:
-			print(np.mean(np.asarray(ranks)), "/", np.sum(template_truth))
-
+	
 	def identify_components(self, action):
 
 		lookarounds = ["with", "to", "from", "at", "in", "under", "into"]
@@ -530,7 +528,6 @@ class Agent_Zork:
 
 if __name__ == "__main__":
 
-
 	args = {
 		"embedding_size": 8, 
 		"hidden_size": 128, 
@@ -539,23 +536,18 @@ if __name__ == "__main__":
 		"walkthrough_filename": ["../walkthroughs/zork_super_walkthrough", "../walkthroughs/zork2_super_walkthrough", "../walkthroughs/zork3_super_walkthrough"],
 		"clip": 40,
 		"batch_size": 64,
-		"learning_rate": 0.004, # originally 0.001
-		"num_epochs": 300,
-		"o1_start": 150,
-		"o2_start": 200,
+		"learning_rate": 0.001, # originally 0.001
+		"num_epochs": 250,
+		"o1_start": 15000,
+		"o2_start": 20000,
 		"temp_path": "../walkthroughs/additional_templates",
 		"add_word_path": "../walkthroughs/additional_words",
 		"max_number_of_sentences": 35,
 		"max_number_of_words": 100
 	}
 
-	agent = Agent_Zork(args, model_type="time", save_name="./models/timemodel3.pt")
+	agent = Agent_Zork(args, model_type="basic", save_name="./models/basic_model2.pt")
 	#agent.visualize_attention()
 	agent.train()
 	#agent.find_accuracy(agent.train_data, print_examples=True)
 	#agent.visualize_embeddings()
-
-
-
-
-

@@ -174,24 +174,37 @@ class SuperWalkthrough:
 		self.section_num = 0 
 		self.internal_num = -1 
 		self.start = True
+		self.number_of_sections = len(self.descriptions)
+		self.wt_num = 0
+
 		return self
 
 	def __next__(self):
 
-		for wt in self.wt:
-			section = wt.get_section(self.section_num)
-			self.internal_num = (self.internal_num + 1) % len(section["List"])
+		internal_section_num = self.section_num
+		for i in range(0, self.wt_num):
+			internal_section_num -= self.wt[i].get_number_of_sections()
 
-			if self.internal_num == 0 and not self.start:
-				self.section_num += 1
-				if self.section_num >= self.number_of_sections:
+		wt = self.wt[self.wt_num]
+		section = wt.get_section(internal_section_num)
+		#print(internal_section_num)
+		self.internal_num = (self.internal_num + 1) % len(section["List"])
+
+		if self.internal_num == 0 and not self.start:
+			self.section_num += 1
+			internal_section_num += 1
+			if internal_section_num >= wt.get_number_of_sections():
+				self.wt_num += 1
+				internal_section_num = 0
+				if self.wt_num >= len(self.wt):
 					raise StopIteration
-				section = wt.get_section(self.section_num)
+			section = wt.get_section(internal_section_num)
 
-			instruction = section["Text"]
-			state = self.descriptions[self.section_num][self.internal_num]
-			action = section["List"][self.internal_num]
-			self.start = False
+
+		instruction = section["Text"]
+		state = self.descriptions[self.section_num][self.internal_num]
+		action = section["List"][self.internal_num]
+		self.start = False
 
 		return instruction, state, action, self.internal_num == 0
 

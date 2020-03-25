@@ -27,6 +27,7 @@ class BasicModel(nn.Module):
 		self.o1_scorer = Scorer((args["hidden_size"] * 4) + args["template_size"], args["output_vocab_size"])
 		self.o2_scorer = Scorer((args["hidden_size"] * 4) + args["template_size"] + args["output_vocab_size"], args["output_vocab_size"])
 
+
 	def forward(self, state, instruction):
 
 		encoded_state = self.state_encoder(self.embeddings, state)
@@ -42,7 +43,10 @@ class BasicModel(nn.Module):
 	def eval(self, state, instruction):
 		with torch.no_grad():
 			t_prob, o1_prob, o2_prob = self.forward(state, instruction)
-			t, o1, o2 = torch.argmax(t_prob, dim=1).item(), torch.argmax(o1_prob, dim=1).item(), torch.argmax(o2_prob, dim=1).item()
+			t, o1, o2 = torch.argmax(t_prob, dim=1), torch.argmax(o1_prob, dim=1), torch.argmax(o2_prob, dim=1)
+
+			if len(state) == 1:
+				return t.item(), o1.item(), o2.item(), t_prob, o1_prob, o2_prob
 			return t, o1, o2, t_prob, o1_prob, o2_prob
 
 	def get_embedding(self, idx):

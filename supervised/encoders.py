@@ -1,11 +1,13 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, pad_sequence
 from torch.autograd import Variable
 import nltk.data
 import sentencepiece as spm
 from utils import *
 from attender import BasicAttender, TimeAttender
+import sys
 
 class StateEncoder(nn.Module):
 
@@ -13,10 +15,10 @@ class StateEncoder(nn.Module):
 
 		super(StateEncoder, self).__init__()
 
-		self.encoder_zero = nn.LSTM(embedding_size, int(hidden_size / 2), bidirectional=True)
-		self.encoder_one = nn.LSTM(embedding_size, int(hidden_size / 4), bidirectional=True)
-		self.encoder_two = nn.LSTM(embedding_size, int(hidden_size / 8), bidirectional=True)
-		self.encoder_three = nn.LSTM(embedding_size, int(hidden_size / 8), bidirectional=True)
+		self.encoder_zero = nn.LSTM(embedding_size, int(hidden_size / 2), bidirectional=True, batch_first=True)
+		self.encoder_one = nn.LSTM(embedding_size, int(hidden_size / 4), bidirectional=True, batch_first=True)
+		self.encoder_two = nn.LSTM(embedding_size, int(hidden_size / 8), bidirectional=True, batch_first=True)
+		self.encoder_three = nn.LSTM(embedding_size, int(hidden_size / 8), bidirectional=True, batch_first=True)
 
 		self.sp = spm.SentencePieceProcessor()
 		self.sp.Load(spm_path)
@@ -25,14 +27,14 @@ class StateEncoder(nn.Module):
 
 	def forward(self, embeddings, state_text):
 
-		state = embeddings(convert_batch_to_tokens(state_text, 420, self.device, self.sp))
+		tokens = convert_batch_to_tokens(state_text, 420, self.device, self.sp, embeddings)
+		outputs = []
+		for i, encoder in enumerate([self.encoder_zero, self.encoder_one, self.encoder_two, self.encoder_three]):
+			encoded, _ = encoder(tokens[i])
+			unpacked, _ = pad_packed_sequence(encoded)
+			outputs.append(unpacked[-1, :, :])
 
-		encoded_zero, _ = self.encoder_zero(state[:, 0, :, :].permute(1, 0, 2))
-		encoded_one, _ = self.encoder_one(state[:, 1, :, :].permute(1, 0, 2))
-		encoded_two, _ = self.encoder_two(state[:, 2, :, :].permute(1, 0, 2))
-		encoded_three, _ = self.encoder_three(state[:, 3, :, :].permute(1, 0, 2))
-
-		combined_tensor = torch.cat([encoded_zero[-1, :, :], encoded_one[-1, :, :], encoded_two[-1, :, :], encoded_three[-1, :, :]], dim=1)
+		combined_tensor = torch.cat(outputs, dim=1)
 
 		return combined_tensor
 
@@ -71,11 +73,13 @@ class InstructionEncoder(nn.Module):
 
 		def encode_instruction(instruction, index):
 			sentence_list = self.tokenizer.tokenize(instruction)
-			sentence_tensor = convert_batch_to_tokens(sentence_list, max_word_number, self.device, self.sp)
-			embedded_sentence_tensor = embeddings(sentence_tensor).squeeze(1).permute(1, 0, 2)
-			sentence_encoder_output, _ = self.word_encoder(embedded_sentence_tensor)
+			sentence_tensor = convert_batch_to_tokens(sentence_list, max_word_number, self.device, self.sp, embeddings)
+			sentence_encoder_output, _ = self.word_encoder(sentence_tensor)
+			unpacked, _ = pad_packed_sequence(sentence_encoder_output)
 
-			encoded_instruction = self.attender(sentence_encoder_output, encoded_state[index, :])
+
+			# unpacked are --max length x num_sentences x 256---
+			encoded_instruction = self.attender(unpacked, encoded_state[index, :])
 
 			return torch.cat([encoded_instruction, torch.zeros(max_sentence_number - len(sentence_list), self.hidden_size * 2)], dim=0).unsqueeze(0)
 
