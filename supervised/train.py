@@ -1,6 +1,6 @@
 from parse_walkthrough import Walkthrough_Dataset, SuperWalkthrough
 from utils import *
-from model import BasicModel, TimeModel
+from models import BasicModel, TimeModel, TransformerModel
 from jericho import *
 from jericho.template_action_generator import TemplateActionGenerator
 
@@ -14,8 +14,6 @@ from torch.utils.data import DataLoader, WeightedRandomSampler, SequentialSample
 
 import numpy as np
 import sentencepiece as spm
-#from sklearn.manifold import TSNE
-#import matplotlib.pyplot as plt
 import random, re, math, sys
 
 class Agent_Zork:
@@ -66,7 +64,14 @@ class Agent_Zork:
 			"max_number_of_sentences": args["max_number_of_sentences"],
 			"max_number_of_words": args["max_number_of_words"]
 		}
-		self.model = BasicModel(self.model_args).to(self.device) if model_type == "basic" else TimeModel(self.model_args).to(self.device)
+
+		self.model = None
+		if model_type == "basic":
+			self.model = BasicModel(self.model_args).to(self.device)
+		elif model_type == "time":
+			self.model = TimeModel(self.model_args).to(self.device)
+		elif model_type == "transformer":
+			self.model = TransformerModel(self.model_args).to(self.device)
 		self.optimizer = optim.Adam(self.model.parameters(), lr=args["learning_rate"])
 
 		if model_name != None:
@@ -76,7 +81,7 @@ class Agent_Zork:
 		"""
 		trains and validates the model
 		"""
-		if self.model.get_name() == "basic":
+		if self.model.get_name() == "basic" or self.model.get_name() == "transformer":
 			self.train_basic()
 		elif self.model.get_name() == "time":
 			self.train_time()
@@ -209,18 +214,6 @@ class Agent_Zork:
 				sentence_atts = torch.index_select(sentence_atts, 0, torch.tensor(sections_used, dtype=torch.long)) if torch.is_tensor(sentence_atts) else sentence_atts
 				word_atts = torch.index_select(word_atts, 0, torch.tensor(sections_used, dtype=torch.long)) if torch.is_tensor(word_atts) else word_atts
 				q_ts, q_o1s, q_o2s, sentence_atts, word_atts = self.model(states, instructions, sentence_atts, word_atts)
-
-
-				"""
-				batch_size, num_templates = q_ts.size()
-				detached = q_ts.detach().numpy()
-				for i in range(batch_size):
-					for j in range(num_templates):
-						print(detached[i, j], end="\t")
-					print()
-				print()
-				"""
-
 				
 				batch_t_loss, _ = get_loss(q_ts, template_idxs, t_criterion)
 				batch_o1_loss, q_o1s_to_use = get_loss(q_o1s, o1_idxs, o1_criterion)
@@ -296,14 +289,7 @@ class Agent_Zork:
 			loss = criterion(update_input, update_target)
 
 			if math.isnan(loss.item()):
-
-				dim1, dim2 = update_input.size()
-				for i in range(dim1):
-					for j in range(dim2):
-						print(update_input[i, j].item(), end="\t")
-					print()
 				sys.exit()
-				return loss.item()
 			loss.backward(retain_graph=retain)
 
 			self.optimizer.step()
@@ -316,10 +302,9 @@ class Agent_Zork:
 		o1_criterion = nn.NLLLoss()
 		o2_criterion = nn.NLLLoss()
 
-		#train_sampler = WeightedRandomSampler(self.get_weights(self.train_data), num_samples=len(self.train_data))
-		#train_dataloader = DataLoader(self.train_data, batch_size=self.batch_size, sampler=train_sampler, drop_last=True)
-		train_dataloader = DataLoader(self.train_data, batch_size=self.batch_size, drop_last=False)
-
+		train_sampler = WeightedRandomSampler(self.get_weights(self.train_data), num_samples=len(self.train_data))
+		train_dataloader = DataLoader(self.train_data, batch_size=self.batch_size, sampler=train_sampler, drop_last=True)
+		#train_dataloader = DataLoader(self.train_data, batch_size=self.batch_size, drop_last=False)
 
 
 		for epoch in range(self.num_epochs):
@@ -366,9 +351,9 @@ class Agent_Zork:
 
 			#if epoch % 10 == 0 and epoch != 0:
 			torch.save(self.model.state_dict(), self.save_name)
-			self.find_accuracy(self.train_data, epoch)
+			self.find_accuracy(self.val_data, epoch)
 
-		#self.find_accuracy(self.val_data, self.num_epochs)
+		self.find_accuracy(self.val_data, self.num_epochs)
 		self.find_accuracy(self.train_data, self.num_epochs)
 		torch.save(self.model.state_dict(), self.save_name)
 
@@ -546,7 +531,7 @@ if __name__ == "__main__":
 		"max_number_of_words": 100
 	}
 
-	agent = Agent_Zork(args, model_type="basic", save_name="./models/basic_model2.pt")
+	agent = Agent_Zork(args, model_type="transformer", save_name="./models/transformer_model.pt")
 	#agent.visualize_attention()
 	agent.train()
 	#agent.find_accuracy(agent.train_data, print_examples=True)
