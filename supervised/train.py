@@ -1,8 +1,11 @@
 from parse_walkthrough import Walkthrough_Dataset, SuperWalkthrough
 from utils import *
 from models import BasicModel, TimeModel, TransformerModel
+
 from jericho import *
 from jericho.template_action_generator import TemplateActionGenerator
+
+from transformers import get_linear_schedule_with_warmup
 
 import torch
 import torch.nn as nn
@@ -72,7 +75,10 @@ class Agent_Zork:
 			self.model = TimeModel(self.model_args).to(self.device)
 		elif model_type == "transformer":
 			self.model = TransformerModel(self.model_args).to(self.device)
-		self.optimizer = optim.Adam(self.model.parameters(), lr=args["learning_rate"])
+		self.optimizer = optim.AdamW(self.model.parameters(), lr=args["learning_rate"])
+		self.optimizer.zero_grad()
+		total_steps = int(len(train_idxs)/args["batch_size"]) * args["num_epochs"]
+		self.scheduler = get_linear_schedule_with_warmup(self.optimizer, num_warmup_steps=args["warmup_steps"], num_training_steps=total_steps)
 
 		if model_name != None:
 			self.model.load_state_dict(torch.load(model_name))
@@ -294,6 +300,7 @@ class Agent_Zork:
 
 			self.optimizer.step()
 			self.optimizer.zero_grad()
+			self.scheduler.step()
 
 			return loss.item()
 
@@ -309,8 +316,8 @@ class Agent_Zork:
 
 		for epoch in range(self.num_epochs):
 
-			if epoch % 5 == 0:
-				self.find_accuracy(self.val_data, epoch)
+			#if epoch % 5 == 0:
+			#	self.find_accuracy(self.val_data, epoch)
 
 			for (states, instructions), actions in train_dataloader:
 
@@ -351,7 +358,7 @@ class Agent_Zork:
 
 			#if epoch % 10 == 0 and epoch != 0:
 			torch.save(self.model.state_dict(), self.save_name)
-			self.find_accuracy(self.val_data, epoch)
+			self.find_accuracy(self.train_data, epoch)
 
 		self.find_accuracy(self.val_data, self.num_epochs)
 		self.find_accuracy(self.train_data, self.num_epochs)
@@ -520,15 +527,16 @@ if __name__ == "__main__":
 		"rom_path": ["../z-machine-games-master/jericho-game-suite/zork1.z5", "../z-machine-games-master/jericho-game-suite/zork2.z5", "../z-machine-games-master/jericho-game-suite/zork3.z5"], 
 		"walkthrough_filename": ["../walkthroughs/zork_super_walkthrough", "../walkthroughs/zork2_super_walkthrough", "../walkthroughs/zork3_super_walkthrough"],
 		"clip": 40,
-		"batch_size": 64,
-		"learning_rate": 0.001, # originally 0.001
+		"batch_size": 64, # change back to 64
+		"learning_rate": 0.0005, # originally 0.001
 		"num_epochs": 250,
 		"o1_start": 15000,
 		"o2_start": 20000,
 		"temp_path": "../walkthroughs/additional_templates",
 		"add_word_path": "../walkthroughs/additional_words",
 		"max_number_of_sentences": 35,
-		"max_number_of_words": 100
+		"max_number_of_words": 100,
+		"warmup_steps": 3,
 	}
 
 	agent = Agent_Zork(args, model_type="transformer", save_name="./models/transformer_model.pt")

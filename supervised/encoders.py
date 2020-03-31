@@ -6,7 +6,7 @@ from torch.autograd import Variable
 import nltk.data
 import sentencepiece as spm
 from utils import *
-from attender import BasicAttender, TimeAttender
+from attenders import BasicAttender, TimeAttender
 import sys
 
 class StateEncoder(nn.Module):
