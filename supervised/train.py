@@ -77,7 +77,7 @@ class Agent_Zork:
 			self.model = TransformerModel(self.model_args).to(self.device)
 		self.optimizer = optim.AdamW(self.model.parameters(), lr=args["learning_rate"])
 		self.optimizer.zero_grad()
-		total_steps = int(len(train_idxs)/args["batch_size"]) * args["num_epochs"]
+		total_steps = int(len(self.train_data)/args["batch_size"]) * args["num_epochs"]
 		self.scheduler = get_linear_schedule_with_warmup(self.optimizer, num_warmup_steps=args["warmup_steps"], num_training_steps=total_steps)
 
 		if model_name != None:
@@ -274,7 +274,6 @@ class Agent_Zork:
 
 		validate(val_swt, t_criterion, o1_criterion, o2_criterion)
 
-
 		for epoch in range(self.num_epochs):
 			total_t_loss, total_o1_loss, total_o2_loss, num_examples, correct_count = execute_epoch(train_swt, t_criterion, o1_criterion, o2_criterion)
 			backward(total_t_loss, total_o1_loss, total_o2_loss, num_examples)
@@ -297,29 +296,35 @@ class Agent_Zork:
 			if math.isnan(loss.item()):
 				sys.exit()
 			loss.backward(retain_graph=retain)
+			utils.clip_grad_norm_(self.model.parameters(), self.clip)
 
 			self.optimizer.step()
-			self.optimizer.zero_grad()
 			self.scheduler.step()
+			self.optimizer.zero_grad()
+
 
 			return loss.item()
-
 
 		t_criterion = nn.NLLLoss()
 		o1_criterion = nn.NLLLoss()
 		o2_criterion = nn.NLLLoss()
 
-		train_sampler = WeightedRandomSampler(self.get_weights(self.train_data), num_samples=len(self.train_data))
-		train_dataloader = DataLoader(self.train_data, batch_size=self.batch_size, sampler=train_sampler, drop_last=True)
+		#train_sampler = WeightedRandomSampler(self.get_weights(self.train_data), num_samples=len(self.train_data))
+		#train_dataloader = DataLoader(self.train_data, batch_size=self.batch_size, sampler=train_sampler, drop_last=True)
 		#train_dataloader = DataLoader(self.train_data, batch_size=self.batch_size, drop_last=False)
-
 
 		for epoch in range(self.num_epochs):
 
 			#if epoch % 5 == 0:
 			#	self.find_accuracy(self.val_data, epoch)
 
+			weights = self.find_accuracy(self.train_data, epoch, print_examples=True, get_weights=True) if epoch > 0 else np.ones(len(self.train_data))
+			train_sampler = WeightedRandomSampler(weights, num_samples=len(self.train_data))
+			train_dataloader = DataLoader(self.train_data, batch_size=self.batch_size, sampler=train_sampler, drop_last=True)
+
 			for (states, instructions), actions in train_dataloader:
+
+				self.optimizer.zero_grad()
 
 				t_indices_to_use = []
 				o1_indices_to_use = []
@@ -358,7 +363,7 @@ class Agent_Zork:
 
 			#if epoch % 10 == 0 and epoch != 0:
 			torch.save(self.model.state_dict(), self.save_name)
-			self.find_accuracy(self.train_data, epoch)
+			#self.find_accuracy(self.train_data, epoch)
 
 		self.find_accuracy(self.val_data, self.num_epochs)
 		self.find_accuracy(self.train_data, self.num_epochs)
@@ -388,30 +393,43 @@ class Agent_Zork:
 
 		return weights
 
-	def find_accuracy(self, data, epoch=-1, print_examples=False):
+	def find_accuracy(self, data, epoch=-1, print_examples=True, get_weights=False):
 
 		criterion = nn.NLLLoss()
 		states = []
 		instructions = []
 		template_truths = []
 
+		# gets the ground truth for the whole dataset
 		for (state, instruction), action in data:
 			states.append(state)
 			instructions.append(instruction)
 			template_truth, _, _ = self.identify_components(action)
 			template_truths.append(template_truth)
 
-
+		# makes predictions and gets loss
 		t_guesses, o1_guesses, o2_guesses, t_prob, o1_prob, o2_prob = self.model.eval(states, instructions)
 		loss = criterion(t_prob, torch.tensor(template_truths, dtype=torch.long))
 
-		correct = 0
-		total = 0
+		# counts how many are correct
+		correct_by_class = np.zeros(len(self.templates))
+		total_by_class = np.zeros(len(self.templates))
 		for i, guess in enumerate(t_guesses):
 			if guess == template_truths[i]:
-				correct += 1
-			total += 1
-		print("\t\tAccuracy:", correct, "/", total, "\n\t\tLoss:", loss.item(), "\n")
+				correct_by_class[guess] += 1
+			total_by_class[guess] += 1
+
+
+		# prints results
+		if print_examples:
+			print("\t\tAccuracy:", int(np.sum(correct_by_class)), "/", int(np.sum(total_by_class)), "\n\t\tLoss:", loss.item(), "\n")
+
+		if get_weights:
+			# smoothing w/ one right
+			weights = np.zeros(len(data))
+			for i, template in enumerate(template_truths):
+				weights[i] = 1/(correct_by_class[template] + 1)
+			return weights
 
 	
 	def identify_components(self, action):
@@ -526,9 +544,9 @@ if __name__ == "__main__":
 		"spm_path": "./spm_models/unigram_8k.model", 
 		"rom_path": ["../z-machine-games-master/jericho-game-suite/zork1.z5", "../z-machine-games-master/jericho-game-suite/zork2.z5", "../z-machine-games-master/jericho-game-suite/zork3.z5"], 
 		"walkthrough_filename": ["../walkthroughs/zork_super_walkthrough", "../walkthroughs/zork2_super_walkthrough", "../walkthroughs/zork3_super_walkthrough"],
-		"clip": 40,
+		"clip": 1.0,
 		"batch_size": 64, # change back to 64
-		"learning_rate": 0.0005, # originally 0.001
+		"learning_rate": 3e-5, # originally 0.001
 		"num_epochs": 250,
 		"o1_start": 15000,
 		"o2_start": 20000,
@@ -536,7 +554,7 @@ if __name__ == "__main__":
 		"add_word_path": "../walkthroughs/additional_words",
 		"max_number_of_sentences": 35,
 		"max_number_of_words": 100,
-		"warmup_steps": 3,
+		"warmup_steps": 0,
 	}
 
 	agent = Agent_Zork(args, model_type="transformer", save_name="./models/transformer_model.pt")
