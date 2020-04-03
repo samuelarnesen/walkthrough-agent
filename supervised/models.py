@@ -107,15 +107,14 @@ class TransformerModel(nn.Module):
 		super(TransformerModel, self).__init__()
 
 		self.device = "cuda" if torch.cuda.is_available() else "cpu"
-		#self.bert = BertModel.from_pretrained("bert-base-uncased")
-		self.bert = BertForSequenceClassification.from_pretrained("bert-base-uncased", num_labels=args["template_size"])
+		self.bert = BertModel.from_pretrained("bert-base-uncased")
+		#self.bert = BertForSequenceClassification.from_pretrained("bert-base-uncased", num_labels=args["template_size"])
 		self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
-
-		#self.bert_output_size = self.bert.embeddings.word_embeddings.embedding_dim
-		#self.t_scorer = Scorer(self.bert_output_size, args["template_size"])
-		#self.o1_scorer = Scorer(self.bert_output_size + args["template_size"], args["output_vocab_size"])
-		#self.o2_scorer = Scorer(self.bert_output_size + args["template_size"] + args["output_vocab_size"], args["output_vocab_size"])
+		self.bert_output_size = self.bert.embeddings.word_embeddings.embedding_dim
+		self.t_scorer = Scorer(self.bert_output_size, args["template_size"])
+		self.o1_scorer = Scorer(self.bert_output_size + args["template_size"], args["output_vocab_size"])
+		self.o2_scorer = Scorer(self.bert_output_size + args["template_size"] + args["output_vocab_size"], args["output_vocab_size"])
 
 	def forward(self, states, instructions, training=True):
 
@@ -136,30 +135,30 @@ class TransformerModel(nn.Module):
 			return torch.tensor(input_tokens).to(self.device), torch.tensor(segment_ids).to(self.device), torch.tensor(attention_masks).to(self.device)
 
 		input_tensor, segment_tensor, attention_mask_tensor = get_inputs()
-		#all_hidden_states, all_attentions = self.bert(input_tensor, token_type_ids=segment_tensor, attention_mask=attention_mask_tensor)
+		all_hidden_states, all_attentions = self.bert(input_tensor, token_type_ids=segment_tensor, attention_mask=attention_mask_tensor)
 
-		#q_t = self.t_scorer(all_hidden_states[:, -1, :], None)
-		#q_o1 = self.o1_scorer(all_hidden_states[:, -1, :], None, [q_t.detach()])
-		#q_o2 = self.o2_scorer(all_hidden_states[:, -1, :], None, [q_t.detach(), q_o1.detach()])
+		q_t = self.t_scorer(all_hidden_states[:, -1, :], None)
+		q_o1 = self.o1_scorer(all_hidden_states[:, -1, :], None, [q_t.detach()])
+		q_o2 = self.o2_scorer(all_hidden_states[:, -1, :], None, [q_t.detach(), q_o1.detach()])
 
-		#return F.log_softmax(q_t, dim=1), F.log_softmax(q_o1, dim=1), F.log_softmax(q_o2, dim=1)
+		return F.log_softmax(q_t, dim=1), F.log_softmax(q_o1, dim=1), F.log_softmax(q_o2, dim=1)
 
-		logits = self.bert(input_tensor, token_type_ids=segment_tensor, attention_mask=attention_mask_tensor)[0]
-		return F.log_softmax(logits, dim=1), None, None
+		#logits = self.bert(input_tensor, token_type_ids=segment_tensor, attention_mask=attention_mask_tensor)[0]
+		#return F.log_softmax(logits, dim=1), None, None
 
 	def eval(self, state, instruction):
 
 		with torch.no_grad():
-			t_prob, o1_prob, o2_prob = self.forward(state, instruction, training=False)
-			#t, o1, o2 = torch.argmax(t_prob, dim=1), torch.argmax(o1_prob, dim=1), torch.argmax(o2_prob, dim=1)
+			#t_prob, o1_prob, o2_prob = self.forward(state, instruction, training=False)
+			t, o1, o2 = torch.argmax(t_prob, dim=1), torch.argmax(o1_prob, dim=1), torch.argmax(o2_prob, dim=1)
 
 			t = torch.argmax(t_prob, dim=1)
 			if len(state) == 1:
-				#return t.item(), o1.item(), o2.item(), t_prob, o1_prob, o2_prob
-				return t.item(), None, None, t_prob, None, None
-			return t, None, None, t_prob, None, None
+				return t.item(), o1.item(), o2.item(), t_prob, o1_prob, o2_prob
+				#return t.item(), None, None, t_prob, None, None
+			#return t, None, None, t_prob, None, None
 
-			#return t, o1, o2, t_prob, o1_prob, o2_prob
+			return t, o1, o2, t_prob, o1_prob, o2_prob
 
 
 	def get_name(self):

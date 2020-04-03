@@ -557,7 +557,7 @@ if __name__ == "__main__":
 		"warmup_steps": 0,
 	}
 
-	agent = Agent_Zork(args, model_type="transformer", save_name="./models/transformer_model.pt")
+	agent = Agent_Zork(args, model_type="transformer", save_name="./models/transformer_model2.pt")
 	#agent.visualize_attention()
 	agent.train()
 	#agent.find_accuracy(agent.train_data, print_examples=True)
