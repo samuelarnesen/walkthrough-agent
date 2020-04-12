@@ -167,7 +167,11 @@ class SuperWalkthrough:
 		for ind_wt in self.wt:
 			for section in ind_wt.get_sections():
 				sections.append(section)
-		return sections	
+		return sections
+
+	def __len__(self):
+		sections = self.get_instructions()
+		return len(sections)
 
 	def __iter__(self):
 		# potentially add resets here

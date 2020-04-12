@@ -1,6 +1,6 @@
 from parse_walkthrough import Walkthrough_Dataset, SuperWalkthrough
 from utils import *
-from models import BasicModel, TimeModel, TransformerModel
+from models import *
 
 from jericho import *
 from jericho.template_action_generator import TemplateActionGenerator
@@ -75,10 +75,12 @@ class Agent_Zork:
 			self.model = TimeModel(self.model_args).to(self.device)
 		elif model_type == "transformer":
 			self.model = TransformerModel(self.model_args).to(self.device)
+		elif model_type == "translate":
+			self.model = TranslationTransformerModel(self.model_args).to(self.device)
+
 		self.optimizer = optim.AdamW(self.model.parameters(), lr=args["learning_rate"])
-		self.optimizer.zero_grad()
 		total_steps = int(len(self.train_data)/args["batch_size"]) * args["num_epochs"]
-		self.scheduler = get_linear_schedule_with_warmup(self.optimizer, num_warmup_steps=args["warmup_steps"], num_training_steps=total_steps)
+		#self.scheduler = get_linear_schedule_with_warmup(self.optimizer, num_warmup_steps=args["warmup_steps"], num_training_steps=total_steps)
 
 		if model_name != None:
 			self.model.load_state_dict(torch.load(model_name))
@@ -91,6 +93,8 @@ class Agent_Zork:
 			self.train_basic()
 		elif self.model.get_name() == "time":
 			self.train_time()
+		elif self.model.get_name() == "translate":
+			self.train_translate()
 		else:
 			print("METHOD NOT AVAILABLE")
 
@@ -118,16 +122,6 @@ class Agent_Zork:
 
 			return get_pct(correct_ts, t)
 
-		def get_object_index(obj_indices):
-			"""
-			gets the index in the vocabulary of the object in multi-word object (e.g. "Dungeon Master" -> "Master")
-			"""
-			full_word = " ".join(self.vocab[idx] for idx in obj_indices)
-			keyword = extract_object(full_word)
-			if len(keyword) == 0:
-				return None
-			return self.reverse_vocab[keyword]
-
 		def get_indices(pair, sentence_atts=[], word_atts=[]):
 			"""
 			gets the sections from the pair
@@ -147,8 +141,8 @@ class Agent_Zork:
 					template_idx, o1_idx, o2_idx = self.identify_components(section[2])
 
 					template_idxs.append(template_idx)
-					o1_idxs.append(get_object_index(o1_idx))
-					o2_idxs.append(get_object_index(o2_idx))
+					o1_idxs.append(self.get_object_index(o1_idx))
+					o2_idxs.append(self.get_object_index(o2_idx))
 
 					if section[3]:
 						sentence_atts.append(None)
@@ -184,9 +178,9 @@ class Agent_Zork:
 				t_idx, o1_seq, o2_seq = self.identify_components(action)
 				t_freq[t_idx] +=1
 				if len(o1_seq) > 0:
-					o1_freq[get_object_index(o1_seq)] += 1
+					o1_freq[self.get_object_index(o1_seq)] += 1
 					if len(o2_seq) > 0:
-						o2_freq[get_object_index(o2_seq)] += 1
+						o2_freq[self.get_object_index(o2_seq)] += 1
 
 			t_weight, o1_weight, o2_weight = torch.zeros(len(self.templates)), torch.zeros(len(self.vocab) + 2), torch.zeros(len(self.vocab) + 2)
 			for i in range(len(self.templates)):
@@ -302,21 +296,16 @@ class Agent_Zork:
 			self.scheduler.step()
 			self.optimizer.zero_grad()
 
-
 			return loss.item()
 
 		t_criterion = nn.NLLLoss()
 		o1_criterion = nn.NLLLoss()
 		o2_criterion = nn.NLLLoss()
 
-		#train_sampler = WeightedRandomSampler(self.get_weights(self.train_data), num_samples=len(self.train_data))
-		#train_dataloader = DataLoader(self.train_data, batch_size=self.batch_size, sampler=train_sampler, drop_last=True)
-		#train_dataloader = DataLoader(self.train_data, batch_size=self.batch_size, drop_last=False)
-
 		for epoch in range(self.num_epochs):
 
-			#if epoch % 5 == 0:
-			#	self.find_accuracy(self.val_data, epoch)
+			if epoch % 5 == 0 and epoch > 0:
+				self.find_accuracy(self.val_data, epoch)
 
 			weights = self.find_accuracy(self.train_data, epoch, print_examples=True, get_weights=True) if epoch > 0 else np.ones(len(self.train_data))
 			train_sampler = WeightedRandomSampler(weights, num_samples=len(self.train_data))
@@ -361,37 +350,119 @@ class Agent_Zork:
 
 				print()
 
-			#if epoch % 10 == 0 and epoch != 0:
 			torch.save(self.model.state_dict(), self.save_name)
-			#self.find_accuracy(self.train_data, epoch)
 
 		self.find_accuracy(self.val_data, self.num_epochs)
 		self.find_accuracy(self.train_data, self.num_epochs)
 		torch.save(self.model.state_dict(), self.save_name)
 
-	def get_weights(self, data):
+	def train_translate(self):
 
-		sequential_sampler = SequentialSampler(data)
-		base_dataloader = DataLoader(data, batch_size=1, sampler=sequential_sampler, drop_last=False)
+		def get_accuracy(targets, probs):
+			guesses = torch.argmax(probs, dim=1).squeeze(0)
+			num_dim = len(guesses.size())
+			if num_dim == 0:
+				guesses = guesses.unsqueeze(0)
+			correct = 0
+			idx = 0
+			for target in targets:
+				if target != None:
+					if target == guesses[idx].item():
+						correct += 1
+					idx += 1
+			return correct / idx
 
-		frequencies = np.zeros(len(self.templates))
-		for _, action in base_dataloader:
+		def update(loss, guess_probs, targets, name="template"):
+			if torch.is_tensor(guess_probs):
+				accuracy = get_accuracy(targets, guess_probs.squeeze(0))
+				print(epoch, "\t", loss.item(), "\t", accuracy, "\t", name)
+				loss.backward()
+				utils.clip_grad_norm_(self.model.parameters(), self.clip)
+				self.optimizer.step()
+				self.scheduler.step()
+				self.optimizer.zero_grad()
 
-			template_idx, o1_idx, o2_idx = self.identify_components(action[0])
-			reconstruction = self.template_to_string(template_idx, o1_idx, o2_idx)
-			if reconstruction == action[0]:
-				frequencies[template_idx] += 1
+		def custom_loss(t_loss, o1_loss, o2_loss, ts, o1s, o2s):
+			t_count = 0
+			o1_count = 0
+			o2_count = 0
+			for i in range(len(ts)):
+				t_count = t_count + 1 if ts[i] != None else t_count
+				o1_count = o1_count + 1 if (o1s[i] != None and epoch >= self.o1_start) else o1_count
+				o2_count = o2_count + 1 if (o2s[i] != None and epoch >= self.o2_start) else o2_count
 
-		weights = np.zeros(len(data))
-		for i, (_, action) in enumerate(base_dataloader):
+			t_pct = t_count / (t_count + o1_count + o2_count)
+			o1_pct = o1_count / (t_count + o1_count + o2_count)
+			o2_pct = o2_count / (t_count + o1_count + o2_count)
 
-			template_idx, o1_idx, o2_idx = self.identify_components(action[0])
-			reconstruction = self.template_to_string(template_idx, o1_idx, o2_idx)
-			if reconstruction == action[0]:
-				if frequencies[template_idx] > 0:
-					weights[i] = 1 / math.sqrt(frequencies[template_idx])
+			total_loss = (t_pct * t_loss) + (o1_pct * o1_loss) + (o2_pct * o1_loss)
+			return total_loss, (t_count, o1_count, o2_count)
 
-		return weights
+		def run_through_wt(wt, training=True):
+			instruction = None
+			states = []
+			actions = []
+			o1s = []
+			o2s = []
+			wt_start = True
+			loss = None
+			for step_instruction, step_state, step_action, step_start in wt:
+
+				if step_start and not wt_start:
+
+					if training:
+						self.optimizer.zero_grad()
+						(t_prob, t_loss), (o1_prob, o1_loss), (o2_prob, o2_loss) = self.model(instruction, states, actions, o1s, o2s)
+						loss, (t_count, o1_count, o2_count) = custom_loss(t_loss, o1_loss, o2_loss, actions, o1s, o2s)
+						t_accuracy = get_accuracy(actions, t_prob.squeeze(0)) if t_count > 0 else None
+						o1_accuracy = get_accuracy(o1s, o1_prob) if o1_count > 0 else None
+						o2_accuracy = get_accuracy(o2s, o2_prob) if o2_count > 0 else None
+						print(epoch, "\t", loss.item(), "\t", t_accuracy, "\t", o1_accuracy, "\t", o2_accuracy)
+						loss.backward()
+						utils.clip_grad_norm_(self.model.parameters(), self.clip)
+						self.optimizer.step()
+						#self.scheduler.step()
+						self.optimizer.zero_grad()
+					else:
+						(t_prob, t_loss), (o1_prob, o1_loss), (o2_prob, o2_loss) = self.model.eval(instruction, states, actions, o1s, o2s)
+						total_loss, (t_count, o1_count, o2_count) = custom_loss(t_loss, o1_loss, o2_loss, actions, o1s, o2s)
+						t_accuracy = get_accuracy(actions, t_prob.squeeze(0)) if t_count > 0 else None
+						o1_accuracy = get_accuracy(o1s, o1_prob) if o1_count > 0 else None
+						o2_accuracy = get_accuracy(o2s, o2_prob) if o2_count > 0 else None
+						print("validation", "\t", total_loss.item(), "\t", t_accuracy, "\t", o1_accuracy, "\t", o2_accuracy)
+					states = []
+					actions = []
+					o1s = []
+					o2s = []
+
+				if step_start:
+					instruction = step_instruction
+
+				states.append(step_state)
+				template_idx, o1_idx, o2_idx = self.identify_components(step_action)
+				actions.append(template_idx)
+				o1s.append(self.get_object_index(o1_idx))
+				o2s.append(self.get_object_index(o2_idx))
+				wt_start = False
+
+
+		## ACTUAL EXECUTION CODE
+		walkthroughs = []
+		for wt_path, rom_path in zip(self.walkthrough_filenames, self.rom_paths):
+			walkthroughs.append(SuperWalkthrough(wt_path, rom_path))
+
+		section_length = 0
+		for wt in walkthroughs[:-1]:
+			section_length += len(walkthroughs[-1])
+		
+		self.scheduler = get_linear_schedule_with_warmup(self.optimizer, num_warmup_steps=0, num_training_steps = self.num_epochs * section_length)
+
+		for epoch in range(self.num_epochs):
+			for wt in walkthroughs[:-1]:
+				run_through_wt(wt)
+			run_through_wt(walkthroughs[-1], training=False)
+			torch.save(self.model.state_dict(), self.save_name)
+
 
 	def find_accuracy(self, data, epoch=-1, print_examples=True, get_weights=False):
 
@@ -419,7 +490,6 @@ class Agent_Zork:
 				correct_by_class[guess] += 1
 			total_by_class[guess] += 1
 
-
 		# prints results
 		if print_examples:
 			print("\t\tAccuracy:", int(np.sum(correct_by_class)), "/", int(np.sum(total_by_class)), "\n\t\tLoss:", loss.item(), "\n")
@@ -431,7 +501,6 @@ class Agent_Zork:
 				weights[i] = 1/(correct_by_class[template] + 1)
 			return weights
 
-	
 	def identify_components(self, action):
 
 		lookarounds = ["with", "to", "from", "at", "in", "under", "into"]
@@ -511,29 +580,15 @@ class Agent_Zork:
 			return template_string.replace('OBJ', find_replacement_string(o1), 1)\
 				.replace('OBJ', find_replacement_string(o2), 1)
 
-	def visualize_attention(self):
-
-		wt = self.data.walkthroughs[0]
-		sentence_atts = [None]
-		word_atts = [None]
-		count = 0
-		print(self.model.attender.time_attention.weight)
-		print(self.model.attender.time_attention.bias)
-		print(self.model.instruction_encoder.attender.time_attention.weight)
-		print(self.model.instruction_encoder.attender.time_attention.bias)
-
-		print()
-
-		for instruction, state, action, start in wt:
-			if count != 0 and start:
-				break
-
-			q_ts, q_o1s, q_o2s, sentence_atts, word_atts = self.model([state], [instruction], sentence_atts, word_atts)
-			sa = sentence_atts.detach().numpy()
-			for element in sa[0]:
-				print(element, end="\t")
-			print()
-			count += 1
+	def get_object_index(self, obj_indices):
+		"""
+		gets the index in the vocabulary of the object in multi-word object (e.g. "Dungeon Master" -> "Master")
+		"""
+		full_word = " ".join(self.vocab[idx] for idx in obj_indices)
+		keyword = extract_object(full_word)
+		if len(keyword) == 0:
+			return None
+		return self.reverse_vocab[keyword]
 
 
 if __name__ == "__main__":
@@ -546,10 +601,10 @@ if __name__ == "__main__":
 		"walkthrough_filename": ["../walkthroughs/zork_super_walkthrough", "../walkthroughs/zork2_super_walkthrough", "../walkthroughs/zork3_super_walkthrough"],
 		"clip": 1.0,
 		"batch_size": 64, # change back to 64
-		"learning_rate": 3e-5, # originally 0.001
-		"num_epochs": 250,
-		"o1_start": 15000,
-		"o2_start": 20000,
+		"learning_rate": 0.0005, # originally 0.001
+		"num_epochs": 400,
+		"o1_start": 0,
+		"o2_start": 0,
 		"temp_path": "../walkthroughs/additional_templates",
 		"add_word_path": "../walkthroughs/additional_words",
 		"max_number_of_sentences": 35,
@@ -557,7 +612,7 @@ if __name__ == "__main__":
 		"warmup_steps": 0,
 	}
 
-	agent = Agent_Zork(args, model_type="transformer", save_name="./models/transformer_model2.pt")
+	agent = Agent_Zork(args, model_type="translate", save_name="./models/translation_model5.pt")
 	#agent.visualize_attention()
 	agent.train()
 	#agent.find_accuracy(agent.train_data, print_examples=True)
