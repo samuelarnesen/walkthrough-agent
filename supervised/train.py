@@ -372,16 +372,6 @@ class Agent_Zork:
 					idx += 1
 			return correct / idx
 
-		def update(loss, guess_probs, targets, name="template"):
-			if torch.is_tensor(guess_probs):
-				accuracy = get_accuracy(targets, guess_probs.squeeze(0))
-				print(epoch, "\t", loss.item(), "\t", accuracy, "\t", name)
-				loss.backward()
-				utils.clip_grad_norm_(self.model.parameters(), self.clip)
-				self.optimizer.step()
-				self.scheduler.step()
-				self.optimizer.zero_grad()
-
 		def custom_loss(t_loss, o1_loss, o2_loss, ts, o1s, o2s):
 			t_count = 0
 			o1_count = 0
@@ -398,7 +388,22 @@ class Agent_Zork:
 			total_loss = (t_pct * t_loss) + (o1_pct * o1_loss) + (o2_pct * o1_loss)
 			return total_loss, (t_count, o1_count, o2_count)
 
+		def check_accuracy(guess_string, target_string):
+			split_guess = guess_string.split()
+			split_target = target_string.split()
+
+			correct_count = 0
+			for i, word in enumerate(split_target):
+				if i >= len(split_guess):
+					break
+				if split_guess[i] == word:
+					correct_count += 1
+
+			return correct_count / len(split_target)
+
+
 		def run_through_wt(wt, training=True):
+			all_actions = [] # added
 			instruction = None
 			states = []
 			actions = []
@@ -412,28 +417,43 @@ class Agent_Zork:
 
 					if training:
 						self.optimizer.zero_grad()
+						action_str = " | ".join(all_actions).lstrip(" ").rstrip(" ")
+						pred_probs, loss, guess_str = self.model(instruction, action_str)
+						accuracy = check_accuracy(guess_str, action_str)
+						print(epoch, "\t", loss.item(), "\t", accuracy)
+
+						"""
 						(t_prob, t_loss), (o1_prob, o1_loss), (o2_prob, o2_loss) = self.model(instruction, states, actions, o1s, o2s)
 						loss, (t_count, o1_count, o2_count) = custom_loss(t_loss, o1_loss, o2_loss, actions, o1s, o2s)
 						t_accuracy = get_accuracy(actions, t_prob.squeeze(0)) if t_count > 0 else None
 						o1_accuracy = get_accuracy(o1s, o1_prob) if o1_count > 0 else None
 						o2_accuracy = get_accuracy(o2s, o2_prob) if o2_count > 0 else None
 						print(epoch, "\t", loss.item(), "\t", t_accuracy, "\t", o1_accuracy, "\t", o2_accuracy)
+						"""
+
 						loss.backward()
 						utils.clip_grad_norm_(self.model.parameters(), self.clip)
 						self.optimizer.step()
 						#self.scheduler.step()
 						self.optimizer.zero_grad()
 					else:
+						action_str = " | ".join(all_actions).lstrip(" ").rstrip(" ")
+						pred_probs, loss, guess_str = self.model.eval(instruction, action_str)
+						accuracy = check_accuracy(guess_str, action_str)
+						print("Validation", "\t", loss.item(), "\t", accuracy)
+						"""
 						(t_prob, t_loss), (o1_prob, o1_loss), (o2_prob, o2_loss) = self.model.eval(instruction, states, actions, o1s, o2s)
 						total_loss, (t_count, o1_count, o2_count) = custom_loss(t_loss, o1_loss, o2_loss, actions, o1s, o2s)
 						t_accuracy = get_accuracy(actions, t_prob.squeeze(0)) if t_count > 0 else None
 						o1_accuracy = get_accuracy(o1s, o1_prob) if o1_count > 0 else None
 						o2_accuracy = get_accuracy(o2s, o2_prob) if o2_count > 0 else None
 						print("validation", "\t", total_loss.item(), "\t", t_accuracy, "\t", o1_accuracy, "\t", o2_accuracy)
+						"""
 					states = []
 					actions = []
 					o1s = []
 					o2s = []
+					all_actions = [] # added
 
 				if step_start:
 					instruction = step_instruction
@@ -444,6 +464,7 @@ class Agent_Zork:
 				o1s.append(self.get_object_index(o1_idx))
 				o2s.append(self.get_object_index(o2_idx))
 				wt_start = False
+				all_actions.append(step_action) # added
 
 
 		## ACTUAL EXECUTION CODE
@@ -462,6 +483,7 @@ class Agent_Zork:
 				run_through_wt(wt)
 			run_through_wt(walkthroughs[-1], training=False)
 			torch.save(self.model.state_dict(), self.save_name)
+
 
 
 	def find_accuracy(self, data, epoch=-1, print_examples=True, get_weights=False):

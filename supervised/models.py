@@ -166,13 +166,31 @@ class TranslationTransformerModel(nn.Module):
 		self.t5 = T5ForConditionalGeneration.from_pretrained("t5-small")
 		self.tokenizer = T5Tokenizer.from_pretrained("t5-small")
 		self.args = args
-
-		#self.o1_scorer = Scorer(self.t5.config.hidden_size + args["template_size"], args["output_vocab_size"], d=64)
-		#self.o2_scorer = Scorer(self.t5.config.hidden_size + args["template_size"], args["output_vocab_size"], d=64)
-
 		self.o_criterion = nn.NLLLoss()
 
-	def forward(self, instructions, states, actions=None, o1s=None, o2s=None, training=True):
+	def forward(self, instruction, actions, training=True):
+		if training:
+			self.t5.train()
+		else:
+			self.t5.eval()
+
+
+		instruction_dict = self.tokenizer.encode_plus("instruction_interpet: " + instruction + "</s>", max_length=400, pad_to_max_length=True)
+		instruction_input_tokens = instruction_dict["input_ids"]
+		instruction_attention_masks = instruction_dict["attention_mask"]
+		instruction_ids = torch.tensor([instruction_dict["input_ids"]])
+		instruction_masks = torch.tensor([instruction_dict["attention_mask"]])
+		action_ids = self.tokenizer.encode(actions, return_tensors="pt")
+
+		loss, logits, hidden = self.t5(input_ids=instruction_ids, attention_mask=instruction_masks, decoder_input_ids=action_ids, lm_labels=action_ids)
+		
+		pred_probs = F.softmax(logits, dim=2)
+		preds = torch.argmax(pred_probs.squeeze(0), dim=1).squeeze(0)
+		reconstructed_string = self.tokenizer.decode(preds)
+
+		return pred_probs, loss, reconstructed_string
+
+	def forward2(self, instructions, states, actions=None, o1s=None, o2s=None, training=True):
 
 		if training:
 			self.t5.train()
@@ -224,7 +242,11 @@ class TranslationTransformerModel(nn.Module):
 
 		return (q_t_probs, instruction_loss), (q_o1_probs, o1_loss), (q_o2_probs, o2_loss)
 
-	def eval(self, instructions, states, actions=None, o1s=None, o2s=None,):
+	def eval(self, instruction, actions):
+		with torch.no_grad():
+			return self.forward(instruction, actions)
+
+	def eval2(self, instructions, states, actions=None, o1s=None, o2s=None,):
 		with torch.no_grad():
 			return self.forward(instructions, states, actions, o1s, o2s, training=False)
 
