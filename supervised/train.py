@@ -399,6 +399,10 @@ class Agent_Zork:
 				if split_guess[i] == word:
 					correct_count += 1
 
+			if correct_count / len(split_target) > 0.9:
+				print(target_string)
+
+
 			return correct_count / len(split_target)
 
 
@@ -634,7 +638,7 @@ if __name__ == "__main__":
 		"warmup_steps": 0,
 	}
 
-	agent = Agent_Zork(args, model_type="translate", save_name="./models/translation_model5.pt")
+	agent = Agent_Zork(args, model_type="translate", save_name="./models/translation_model6.pt")
 	#agent.visualize_attention()
 	agent.train()
 	#agent.find_accuracy(agent.train_data, print_examples=True)

@@ -1,4 +1,5 @@
 from jericho import *
+from jericho.template_action_generator import TemplateActionGenerator
 from torch.utils.data import Dataset
 import copy, re, sys
 import sentencepiece as spm
@@ -80,9 +81,9 @@ class Walkthrough:
 
 class SuperWalkthrough:
 
-	def __init__(self, filename=None, rom_path=None):
+	def __init__(self, filename=None, rom_path=None, requires_valid_actions=False):
 		
-		self.locations = []
+		self.initial_observations = []
 		self.inventories = []
 		self.observations = []
 		self.actions = []
@@ -91,20 +92,24 @@ class SuperWalkthrough:
 		self.section_num = 0 # for iterator
 		self.internal_num = -1 # for iterator
 		self.start = True # for iterator
+		self.requires_valid_actions = requires_valid_actions
 		self.number_of_sections = 0
+
+		self.states_in_order = []
+		self.valid_actions = []
 
 		if filename != None and rom_path != None:
 			self.load_from_walkthrough(filename, rom_path)
 
 	def load_from_walkthrough(self, wt_filenames, rom_paths):
 
-		def add(observation, items, location, action, start):
+		def add(observation, items, initial_observation, action, start):
 			self.observations.append(observation.rstrip(" \n"))
 			item_list = []
 			for item in items:
 				item_list.append(item.name)
 			self.inventories.append(item_list)
-			self.locations.append(location)
+			self.initial_observations.append(initial_observation)
 			self.actions.append(action)
 
 			inventories_str = ""
@@ -112,7 +117,7 @@ class SuperWalkthrough:
 				inventories_str = ", ".join(self.inventories[-1])
 
 			total_description = self.observations[-1] + " | " + inventories_str + \
-					" | " + self.locations[-1] + " | " + self.actions[-1]
+					" | " + self.initial_observations[-1] + " | " + self.actions[-1]
 
 			#if len(self.descriptions[-1]) == len(sections[len(self.descriptions) - 1]["List"]):
 			if start:
@@ -121,12 +126,15 @@ class SuperWalkthrough:
 
 			self.descriptions[-1].append(total_description)
 
+
 		if type(wt_filenames) != type([]):
 			wt_filenames = [wt_filenames]
 		if type(rom_paths) != type([]):
 			rom_paths = [rom_paths]
 
 		for wt_filename, rom_path in zip(wt_filenames, rom_paths):
+
+			tag = TemplateActionGenerator(jericho.load_bindings(rom_path))
 
 			self.wt.append(Walkthrough(wt_filename))
 			sections = self.wt[-1].get_sections()
@@ -139,28 +147,50 @@ class SuperWalkthrough:
 			location = env.get_player_location()
 			add(observation, items, location.name, "", True) # fix
 
-			location_descriptions = {}
-
+			counter = 0
 			for i, section in enumerate(sections):
 				for j, action in enumerate(section["List"]):
-					observation, _, _, _ = env.step(action)
+					initial_observation, _, _, _ = env.step(action)
+
 					items = env.get_inventory()
-					location = env.get_player_location()
+					observation, _, _, _ = env.step("look")
 
-					if location.name not in location_descriptions and location.name in observation:
-						generic_description = "\n".join(observation.split("\n\n")[0:2])
-						location_descriptions[location.name] = generic_description[generic_description.index(location.name):]
+					if self.requires_valid_actions:
+						if len(self.valid_actions) > 0:
+							if action not in self.valid_actions[-1]:
+								self.valid_actions[-1].append(action)
+							print(counter, "\t", self.valid_actions[-1])
 
-					if observation.rstrip(" \n") == location.name:
-						observation = location_descriptions[location.name]
 
-					add(observation, items, location.name, action, j==len(section["List"])-1)
+						# gets all the objects
+						objs = env.identify_interactive_objects(initial_observation)
+						for obj in env.identify_interactive_objects(observation):
+							if obj not in objs:
+								objs.append(obj)
+						obj_list = [obj[0] for obj in objs]
+						possible_actions = tag.generate_actions(obj_list)
+						self.valid_actions.append(env.find_valid_actions(possible_actions))
 
+					env.reset()
+					for i2 in range(0, i + 1):
+						section2 = sections[i2]
+						for j2, action2 in enumerate(section2["List"]):
+							env.step(action2)
+							if i2 == i and j2 == j:
+								break
+
+					add(observation, items, initial_observation, action, j==len(section["List"])-1)
+					counter += 1
+					
 			self.descriptions.pop()
 			env.close()
 
+		for block in self.descriptions:
+			for ob in block:
+				self.states_in_order.append(ob.replace("\n", " "))
+
 	def get_state_descriptions(self):
-		return self.descriptions
+		return self.states_in_order
 
 	def get_instructions(self):
 		sections = []
@@ -168,6 +198,12 @@ class SuperWalkthrough:
 			for section in ind_wt.get_sections():
 				sections.append(section)
 		return sections
+
+	def get_actions(self):
+		return self.actions[1:]
+
+	def get_valid_actions(self):
+		return self.valid_actions
 
 	def __len__(self):
 		sections = self.get_instructions()

@@ -174,7 +174,6 @@ class TranslationTransformerModel(nn.Module):
 		else:
 			self.t5.eval()
 
-
 		instruction_dict = self.tokenizer.encode_plus("instruction_interpet: " + instruction + "</s>", max_length=400, pad_to_max_length=True)
 		instruction_input_tokens = instruction_dict["input_ids"]
 		instruction_attention_masks = instruction_dict["attention_mask"]
@@ -242,6 +241,7 @@ class TranslationTransformerModel(nn.Module):
 
 		return (q_t_probs, instruction_loss), (q_o1_probs, o1_loss), (q_o2_probs, o2_loss)
 
+	# i should change this anyways
 	def eval(self, instruction, actions):
 		with torch.no_grad():
 			return self.forward(instruction, actions)
