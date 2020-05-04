@@ -1,0 +1,2 @@
+Logging to logs
+Namespace(batch_size=64, clip=40, embedding_size=64, env_step_limit=100, gamma=0.95, hidden_size=128, log_freq=100, lr=0.0003, max_seq_len=300, output_dir='logs', replay_buffer_size=100000, replay_buffer_type='priority', rho=0.5, rom_path='../../z-machine-games-master/jericho-game-suite/zork1.z5', spm_path='../spm_models/unigram_8k.model', steps=1000000, temp_path='../../walkthroughs/additional_templates', update_freq_tar=1000, update_freq_td=4, use_walkthrough=True, walkthrough_filename='./zork1_swt.p')
