@@ -1,5 +1,3 @@
-##http://www.eristic.net/games/infocom/hhg.html##
-
 Turn on the light. Stand up. Get your dressing gown and put it on. Open the pocket and take the tablet of buffered analgesic (i.e., aspirin). Take the screwdriver and toothbrush. Go south onto your Front Porch and get the junk mail. Go south again to Front of House and take bleary-eyed notice of the bulldozer.
 
 >turn on light
@@ -14,16 +12,13 @@ Turn on the light. Stand up. Get your dressing gown and put it on. Open the pock
 >take mail
 >go south
 
-Lie down in the mud to stop the bulldozer's progress. Wait three turns while the bulldozer approaches and finally stops. When Ford Prefect shows up, don't take his offered towel. Say Ford, what about my home. Wait two more turns while they are "deeply engrossed in conversation" and Ford persuades Prosser to switch places with you in the mud.
+Lie down in the mud to stop the bulldozer's progress. Wait while the bulldozer approaches and finally stops. When Ford Prefect shows up, don't take his offered towel. Say Ford, what about my home. Wait while they are "deeply engrossed in conversation" and Ford persuades Prosser to switch places with you in the mud.
 
 >lie down
->wait
->wait
->wait
+>repeat wait until bulldozer stops (3)
 >ask ford
 >what about my home
->wait
->wait
+>repeat wait until Ford persuades Prosser (2)
 
 After you stand up, head south and then west down the lane to the Pub. Wait. When Ford buys beer, drink the beer three times, and buy a cheese sandwich. If you haven't already, soon you will hear your house being knocked down. Go east out of the pub, give the sandwich to the dog, then go north to what's left of your house. If you like, spend a couple of turns taking it out on Prosser (yell at him, hit him, etc.). Soon a Vogon Constructor Fleet will arrive to do to Earth what Prosser just did to your house.
 
@@ -56,12 +51,12 @@ Wait four turns. Look closely at the room descriptions. Have you noticed a sense
 >examine shadow
 >eat peanuts
 
-The next order of business is to get a Babel fish into your ear. (Yeah, you heard me.) Examine the dispensing machine. Remove your gown and hang it on the hook. Wait one turn for Ford to fall asleep. Take the towel and satchel. Put the towel over the grate in the floor. Put the satchel in front of the dispenser's "robot panel". Put the junk mail on the satchel. Press the dispenser button. (Insert Rube Goldberg sequence here.) Squish!
+The next order of business is to get a Babel fish into your ear. (Yeah, you heard me.) Examine the dispensing machine. Remove your gown and hang it on the hook. Wait for Ford to fall asleep. Take the towel and satchel. Put the towel over the grate in the floor. Put the satchel in front of the dispenser's "robot panel". Put the junk mail on the satchel. Press the dispenser button. (Insert Rube Goldberg sequence here.) Squish!
 
 >examine dispensing machine
 >remove gown
 >hang gown on hook
->wait
+>repeat wait until Ford falls asleep (1)
 >take towel
 >take satchel
 >put towel over grate
@@ -69,25 +64,14 @@ The next order of business is to get a Babel fish into your ear. (Yeah, you hear
 >put mail on satchel
 >press dispenser button
 
-Examine the case that holds the atomic vector plotter. Flip the switch, and make a note of the word and verse of the password to open the case. Wait four turns until some Vogon guards come to drag you to the poetry reading. Wait four more turns. Once the Captain begins ("Oh freddled gruntbuggly..."), enjoy the poetry. Wait. Pay close attention to get the password for the vector plotter case. Wait until you are returned to the Vogon Hold.
+Examine the case that holds the atomic vector plotter. Flip the switch, and make a note of the word and verse of the password to open the case. Wait until some Vogon guards come to drag you to the poetry reading. Continue waiting. Once the Captain begins ("Oh freddled gruntbuggly..."), enjoy the poetry. Wait. Pay close attention to get the password for the vector plotter case. Wait until you are returned to the Vogon Hold.
 
 >examine case
 >flip switch
->wait
->wait
->wait
->wait
->wait
->wait
->wait
->wait
+>repeat wait until reach poetry reading (4)
+>repeat wait until Captain says oh freddled gruntbuggly (4)
 >enjoy poetry
->wait
->wait
->wait
->wait
->wait
->wait
+>repeat wait until reach Vogon Hold (6)
 
 When you are returned at last to the Vogon Hold, type the password on the keyboard, enclosed in quotes (i.e. type "venchit"). Get the atomic vector plotter and your gown and towel. Wait a couple of turns. You will be rudely hustled into the airlock. Examine the Thumb and you will see blinkenlights. (Alles lookenspeepers!) Press the green button to hitch a ride aboard a spaceship whose occupants are not about to violently eject you into space.
 
@@ -95,7 +79,7 @@ When you are returned at last to the Vogon Hold, type the password on the keyboa
 >take atomic vector plotter
 >take gown
 >take towel
->wait
+>repeat wait until reach airlock (1)
 >examine thumb
 >press green button
 
@@ -223,9 +207,7 @@ Go back starboard and up to the Bridge. Put the large plug in the large receptac
 >go starboard
 >go up
 >put large plug in large receptacle
->wait
->wait
->wait
+>repeat wait until missile attack starts (3)
 >panic
 >turn on drive
 
@@ -237,14 +219,7 @@ Return down and port to the Galley and get the tea that the Nutrimat has produce
 >go starboard
 >go up
 >drop tea
->wait
->wait
->wait
->wait
->wait
->wait
->wait
->wait
+>repeat wait until reach Magrathea (8)
 >remove bit
 >put bit in tea
 >wait
@@ -257,14 +232,8 @@ Hear the Dark, and go aft. Get the awl, then just wait until you arrive in the M
 >hear the dark
 >go aft
 >take awl
->wait
->wait
->wait
->wait
->go north
->go north
->go north
->go north
+>repeat wait until reach maze (4)
+>repeat go north until reach large black particle (4)
 >take particle
 >wait
 >wait
@@ -289,18 +258,14 @@ See the Dark, and examine the light. In this scene you are Zaphod Beeblebrox, Pr
 >take wrench
 >push autopilot button
 >steer towards rocky spire
->wait
->wait
->wait
+>repeat wait until autopilot takes over (3)
 
 Stand up and get out of the boat. Wave at the crowd. Wait for Trillian to show up and threaten to shoot you. Tell the guards to drop their rifles, then tell Trillian to shoot the pile of rifles. Go into the Heart of Gold, and you will be back in the Dark. Wait four turns, hear the Dark, and go aft, aft, aft, and down to the Hatchway. Get the fluff and tools that you dropped here as Zaphod (if "your load is too heavy", drop the thing, then get the tools and put them in it). Go up, fore, and up to the Bridge. Turn on improbability drive and wait two more turns.
 
 >stand up
 >exit boat
 >wave at crowd
->wait
->wait
->wait
+>repeat wave until Trillian arrives (3)
 >tell guards to drop rifles
 >tell Trillian to shoot pile of rifles
 >enter heart of gold
@@ -349,13 +314,7 @@ Go south and west to the pub; Arthur will follow you. Buy beer and peanuts. Drin
 
 Wait and in a few turns, the Vogons will arrive to destroy Earth. You'll drop the Thumb, as Ford did in the beginning of the game, and then it will be Dark again. Wait four turns, hear the Dark, and return aft, aft, and up to the bridge. If you do an inventory, you will see that your dressing gown now contains the satchel fluff you gave to Arthur as Ford. Put all your possessions in the thing your aunt gave you, turn on the improbability drive, and wait once.
 
->wait
->wait
->wait
->wait
->wait
->wait
->wait
+>repeat wait until Vogons destroy Earth (7)
 >hear the dark
 >go aft
 >go aft
@@ -405,12 +364,7 @@ Touch the Dark, and drink the liquid. In this scene you're at the Islington part
 >open bag
 >put fluff in bag
 >pick up wine
->wait
->wait
->wait
->wait
->wait
->wait
+>repeat wait until Phil arrives (6)
 >hear the dark
 >go aft
 >go aft
@@ -426,7 +380,6 @@ Touch the Dark, and drink the liquid. In this scene you're at the Islington part
 
 Remove the long, dangly bit from the cup of tea and take the tea. Then, take the "no tea" that you dropped when you got the tea - which will now not force you to drop the tea, since you've removed your common sense. Now you have both tea and no tea. Well, well, well! Have you noticed, too, that you have four different kinds of fluff -- seat cushion, jacket, satchel, and pocket? Plant them all in the flowerpot. Wait until it sprouts, then go port into the sauna. Look at the plant. Get the fruit.
 
-
 >remove bit from tea
 >take tea
 >take no tea
@@ -434,12 +387,7 @@ Remove the long, dangly bit from the cup of tea and take the tea. Then, take the
 >plant jacket fluff in flowerpot
 >plant satchel fluff in flowerpot
 >plant pocket fluff in flowerpot
->wait
->wait
->wait
->wait
->wait
->wait
+>repeat wait until flower sprouts (6)
 >go port
 >look at plant
 >take fruit
@@ -462,12 +410,10 @@ Go down and aft to Corridor, Aft End. Try to go port and you will be told the "s
 >drop all
 >pick up paint chipper
 
-Go starboard again into the Access Space. Wait. Marvin will show up. Wait and then give him the paint chipper when he asks for it. Return port, then go down onto Magrathea. Congratulations, Earthman!
+Go starboard again into the Access Space. Wait. Marvin will show up. Wait one more turn, then give him the paint chipper when he asks for it. Return port, then go down onto Magrathea. Congratulations, Earthman!
 
 >go starboard
->wait
->wait
->wait
+>repeat wait until Marvin arrives (3)
 >give paint chipper to marvin
 >go port
 >go down

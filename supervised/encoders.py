@@ -62,7 +62,7 @@ class InstructionEncoder(nn.Module):
 		self.hidden_size = hidden_size
 		self.attender = BasicAttender(self.hidden_size) if basic else TimeAttender(self.hidden_size, max_word_number)
 
-	def forward(self, embeddings, instructions, encoded_state, previous_attention=None, max_sentence_number=35, max_word_number=100):
+	def forward(self, embeddings, instructions, encoded_state, previous_attention=None, max_sentence_number=35, max_word_number=120):
 
 		if self.basic:
 			return self.basic_encode(embeddings, instructions, encoded_state, max_sentence_number, max_word_number)
@@ -76,7 +76,6 @@ class InstructionEncoder(nn.Module):
 			sentence_tensor = convert_batch_to_tokens(sentence_list, max_word_number, self.device, self.sp, embeddings)
 			sentence_encoder_output, _ = self.word_encoder(sentence_tensor)
 			unpacked, _ = pad_packed_sequence(sentence_encoder_output)
-
 
 			# unpacked are --max length x num_sentences x 256---
 			encoded_instruction = self.attender(unpacked, encoded_state[index, :])
@@ -101,12 +100,15 @@ class InstructionEncoder(nn.Module):
 
 		def encode_instruction(instruction, index):
 			sentence_list = self.tokenizer.tokenize(instruction)
-			sentence_tensor = convert_batch_to_tokens(sentence_list, max_word_number, self.device, self.sp)
-			embedded_sentence_tensor = embeddings(sentence_tensor).squeeze(1).permute(1, 0, 2)
-			sentence_encoder_output, _ = self.word_encoder(embedded_sentence_tensor)
+			sentence_tensor = convert_batch_to_tokens(sentence_list, max_word_number, self.device, self.sp, embeddings)
+			sentence_encoder_output, _ = self.word_encoder(sentence_tensor)
+			sentence_encoder_output_unpacked, _ = pad_packed_sequence(sentence_encoder_output)
 
 			attention_to_use = previous_attention[index, 0:len(sentence_list), :] if torch.is_tensor(previous_attention) else [None]
-			encoded_instruction, attention = self.attender(sentence_encoder_output[:, :, :], encoded_state[index, :], attention_to_use, get_lengths_of_sentences(sentence_list))
+			encoded_instruction, short_attention = self.attender(sentence_encoder_output_unpacked, encoded_state[index, :], attention_to_use, get_lengths_of_sentences(sentence_list))
+
+			short_length = short_attention.size(1)
+			attention = torch.cat([short_attention, torch.zeros(len(sentence_list), max_word_number - short_length)], dim=1)
 
 			encoded_instruction = torch.cat([encoded_instruction, torch.zeros(max_sentence_number - len(sentence_list), self.hidden_size * 2)], dim=0).unsqueeze(0)
 			attention = torch.cat([attention, torch.zeros(max_sentence_number - len(sentence_list), max_word_number)]).unsqueeze(0)

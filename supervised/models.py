@@ -7,7 +7,8 @@ import sentencepiece as spm
 from utils import *
 from attenders import BasicAttender, TimeAttender
 from encoders import StateEncoder, InstructionEncoder
-from transformers import BertModel, BertTokenizer, T5Tokenizer, T5ForConditionalGeneration
+from transformers import BertModel, BertTokenizer
+from transformers import T5Tokenizer, T5ForConditionalGeneration
 from scorers import Scorer
 import sys
 
@@ -28,7 +29,6 @@ class BasicModel(nn.Module):
 		self.t_scorer = Scorer(args["hidden_size"] * 4, args["template_size"])
 		self.o1_scorer = Scorer((args["hidden_size"] * 4) + args["template_size"], args["output_vocab_size"])
 		self.o2_scorer = Scorer((args["hidden_size"] * 4) + args["template_size"] + args["output_vocab_size"], args["output_vocab_size"])
-
 
 	def forward(self, state, instruction):
 
@@ -71,9 +71,9 @@ class TimeModel(nn.Module):
 		self.state_encoder = StateEncoder(args["embedding_size"], args["hidden_size"], args["spm_path"])
 		self.attender = TimeAttender(args["hidden_size"], args["max_number_of_sentences"])
 
-		self.t_scorer = Scorer(args["hidden_size"] * 4, args["template_size"])
-		self.o1_scorer = Scorer((args["hidden_size"] * 4) + args["template_size"], args["output_vocab_size"])
-		self.o2_scorer = Scorer((args["hidden_size"] * 4) + args["template_size"] + args["output_vocab_size"], args["output_vocab_size"])
+		self.t_scorer = Scorer(args["hidden_size"] * 4, args["template_size"], d=32)
+		self.o1_scorer = Scorer((args["hidden_size"] * 4) + args["template_size"], args["output_vocab_size"], d=64)
+		self.o2_scorer = Scorer((args["hidden_size"] * 4) + args["template_size"] + args["output_vocab_size"], args["output_vocab_size"], d=64)
 
 	def forward(self, state, instruction, previous_sentence_attention, previous_word_attention):
 
@@ -83,8 +83,8 @@ class TimeModel(nn.Module):
 		attended_instruction, sentence_weights = self.attender(full_instruction_encoder_output, encoded_state, previous_sentence_attention, sentence_lengths)
 
 		q_t = self.t_scorer(attended_instruction, encoded_state)
-		q_o1 = self.o1_scorer(attended_instruction, encoded_state, [q_t.detach()])
-		q_o2 = self.o2_scorer(attended_instruction, encoded_state, [q_t.detach(), q_o1.detach()])
+		q_o1 = self.o1_scorer(attended_instruction, encoded_state, [q_t.clone().detach()])
+		q_o2 = self.o2_scorer(attended_instruction, encoded_state, [q_t.clone().detach(), q_o1.clone().detach()])
 
 		return F.log_softmax(q_t, dim=1), F.log_softmax(q_o1, dim=1), F.log_softmax(q_o2, dim=1), sentence_weights, word_weights
 
@@ -111,9 +111,9 @@ class TransformerModel(nn.Module):
 		self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
 		self.bert_output_size = self.bert.embeddings.word_embeddings.embedding_dim
-		self.t_scorer = Scorer(self.bert_output_size, args["template_size"])
-		self.o1_scorer = Scorer(self.bert_output_size + args["template_size"], args["output_vocab_size"])
-		self.o2_scorer = Scorer(self.bert_output_size + args["template_size"] + args["output_vocab_size"], args["output_vocab_size"])
+		self.t_scorer = Scorer(self.bert_output_size, args["template_size"], d=32)
+		self.o1_scorer = Scorer(self.bert_output_size + args["template_size"], args["output_vocab_size"], d=64)
+		self.o2_scorer = Scorer(self.bert_output_size + args["template_size"] + args["output_vocab_size"], args["output_vocab_size"], d=64)
 
 	def forward(self, states, instructions, training=True):
 
@@ -142,15 +142,13 @@ class TransformerModel(nn.Module):
 
 		return F.log_softmax(q_t, dim=1), F.log_softmax(q_o1, dim=1), F.log_softmax(q_o2, dim=1)
 
-	def eval(self, state, instruction):
+	def eval(self, states, instructions):
 
 		with torch.no_grad():
+			t_prob, o1_prob, o2_prob = self(states, instructions, training=False)
 			t, o1, o2 = torch.argmax(t_prob, dim=1), torch.argmax(o1_prob, dim=1), torch.argmax(o2_prob, dim=1)
-
-			t = torch.argmax(t_prob, dim=1)
-			if len(state) == 1:
+			if len(states) == 1:
 				return t.item(), o1.item(), o2.item(), t_prob, o1_prob, o2_prob
-
 			return t, o1, o2, t_prob, o1_prob, o2_prob
 
 	def get_name(self):
@@ -166,22 +164,42 @@ class TranslationTransformerModel(nn.Module):
 		self.t5 = T5ForConditionalGeneration.from_pretrained("t5-small")
 		self.tokenizer = T5Tokenizer.from_pretrained("t5-small")
 		self.args = args
-		self.o_criterion = nn.NLLLoss()
 
-	def forward(self, instruction, actions, training=True):
+		special_tokens_dict = {
+			"eos_token": "</s>",
+			"bos_token": "<s>",
+			"unk_token": "<unk>",
+			"pad_token": "<pad>"
+		}
+		self.tokenizer.add_special_tokens(special_tokens_dict)
+
+	def forward(self, instruction, actions, repeater=None, command_mode=True, training=False):
 		if training:
 			self.t5.train()
 		else:
 			self.t5.eval()
 
-		instruction_dict = self.tokenizer.encode_plus("instruction_interpet: " + instruction + "</s>", max_length=400, pad_to_max_length=True)
-		instruction_input_tokens = instruction_dict["input_ids"]
-		instruction_attention_masks = instruction_dict["attention_mask"]
-		instruction_ids = torch.tensor([instruction_dict["input_ids"]])
-		instruction_masks = torch.tensor([instruction_dict["attention_mask"]])
-		action_ids = self.tokenizer.encode(actions, return_tensors="pt")
+		if command_mode:
+			return self.predict_commands(instruction, actions, training)
+		else:
+			return self.predict_criteria_met(repeater)
 
-		loss, logits, hidden = self.t5(input_ids=instruction_ids, attention_mask=instruction_masks, decoder_input_ids=action_ids, lm_labels=action_ids)
+	# i should change this anyways
+	def eval(self, instruction, actions):
+		with torch.no_grad():
+			return self.forward(instruction, actions, False)
+
+
+	def predict_commands(self, instruction, actions, training=True):
+
+		instruction_dict = self.tokenizer.encode_plus("<s> instruction_interpet: " + instruction + "</s>", max_length=400, pad_to_max_length=True, return_tensors="pt")
+		instruction_ids = instruction_dict["input_ids"]
+		instruction_masks = instruction_dict["attention_mask"]
+		action_ids = self.tokenizer.encode("<pad> " + actions + " </s>", return_tensors="pt")
+		decoder_input_ids = action_ids[:, :-1]
+		lm_labels = action_ids[:, 1:].clone()
+
+		loss, logits, hidden = self.t5(input_ids=instruction_ids, attention_mask=instruction_masks, decoder_input_ids=decoder_input_ids, lm_labels=lm_labels)
 		
 		pred_probs = F.softmax(logits, dim=2)
 		preds = torch.argmax(pred_probs.squeeze(0), dim=1).squeeze(0)
@@ -189,70 +207,40 @@ class TranslationTransformerModel(nn.Module):
 
 		return pred_probs, loss, reconstructed_string
 
-	def forward2(self, instructions, states, actions=None, o1s=None, o2s=None, training=True):
+	def predict_criteria_met(self, repeater):
 
-		if training:
-			self.t5.train()
-		else:
-			self.t5.eval()
+		state_ids = []
+		state_masks = []
+		token_type_ids = []
 
-		def get_inputs(instruction, states, actions):
-			instruction_dict = self.tokenizer.encode_plus("instruction_interpet: " + instruction + "</s>", max_length=400, pad_to_max_length=True)
-			instruction_input_tokens = instruction_dict["input_ids"]
-			instruction_attention_masks = instruction_dict["attention_mask"]
+		text_pairs = [("<s> classify_state: state: " + state + "</s>", "condition: " + repeater.terminal_condition + "</s>") for state in repeater.states]
+		state_dict = self.tokenizer.batch_encode_plus(text_pairs, max_length=400, pad_to_max_length=True, return_tensors="pt")
 
-			state_input_tokens = []
-			state_attention_masks = []			
-			for state in states:
-				state_dict = self.tokenizer.encode_plus("state_interpret: " + state, max_length=200, pad_to_max_length=True)
-				state_input_tokens.append(state_dict["input_ids"])
-				state_attention_masks.append(state_dict['attention_mask'])
+		actions = ["<pad> not_satisfied </s>" for i in range(len(repeater.states))]
+		actions[-1] = "<pad> is_satisfied </s>"
 
-			return torch.tensor([instruction_input_tokens]), torch.tensor([instruction_attention_masks]), torch.tensor(state_input_tokens), \
-				torch.tensor(state_attention_masks), torch.tensor([actions])
+		action_ids = self.tokenizer.batch_encode_plus(actions, return_tensors="pt")["input_ids"]
 
-		def get_idxs(vals):
-			idxs = []
-			val_select = []
-			for i, o in enumerate(vals):
-				if o != None:
-					idxs.append(i)
-					val_select.append(o)
-			return torch.tensor(idxs, dtype=torch.long), torch.tensor(val_select, dtype=torch.long)
+		decoder_input_ids = action_ids[:, :-1]
+		lm_labels = action_ids[:, 1:].clone()
 
-		instruction_input_tokens, instruction_attention_masks, state_input_tokens, state_attention_masks, action_tensor = get_inputs(instructions, states, actions)
-		instruction_loss, instruction_logits, instruction_hidden = self.t5(input_ids=instruction_input_tokens, attention_mask=instruction_attention_masks, decoder_input_ids=action_tensor, lm_labels=action_tensor)
-		#_, state_logits, _ = self.t5(input_ids=state_input_tokens, attention_mask=state_attention_masks, lm_labels=action_tensor.permute(1, 0))
+		loss, logits, hidden = self.t5(input_ids=state_dict["input_ids"], attention_mask=state_dict["attention_mask"], \
+			decoder_input_ids=decoder_input_ids, lm_labels=lm_labels)
 
-		q_t = instruction_logits[:, :, 0:self.args["template_size"]]
-		q_t_probs = F.log_softmax(q_t, dim=2)
+		pred_probs = F.softmax(logits, dim=2)
+		preds = torch.argmax(pred_probs, dim=2)
+		reconstructed_strings = []
+		for i in range(len(repeater.states)):
+			reconstructed_strings.append(self.tokenizer.decode(preds[i, :]))
 
-		q_o1 = instruction_logits[:, :, self.args["template_size"]:(self.args["template_size"] + self.args["output_vocab_size"])]
-		o1_idxs, o1s_select = get_idxs(o1s)
-		q_o1_select = torch.index_select(q_o1.squeeze(0), 0, o1_idxs)
-		q_o1_probs = F.log_softmax(q_o1_select, dim=1)
-		o1_loss = self.o_criterion(q_o1_probs, o1s_select) if (o1s != None and q_o1_select.size()[0] != 0) else None
+		return pred_probs, loss, " | ".join(reconstructed_strings)
 
-		q_o2 = instruction_logits[:, :, (self.args["template_size"] + self.args["output_vocab_size"]):(self.args["template_size"] + self.args["output_vocab_size"] + self.args["output_vocab_size"])]
-		o2_idxs, o2s_select = get_idxs(o2s)
-		q_o2_select = torch.index_select(q_o2.squeeze(0), 0, o2_idxs)
-		q_o2_probs = F.log_softmax(q_o2_select, dim=1)
-		o2_loss = self.o_criterion(q_o2_probs, o2s_select) if (o2s != None and q_o2_select.size()[0] != 0) else None
-
-		return (q_t_probs, instruction_loss), (q_o1_probs, o1_loss), (q_o2_probs, o2_loss)
-
-	# i should change this anyways
-	def eval(self, instruction, actions):
-		with torch.no_grad():
-			return self.forward(instruction, actions)
-
-	def eval2(self, instructions, states, actions=None, o1s=None, o2s=None,):
-		with torch.no_grad():
-			return self.forward(instructions, states, actions, o1s, o2s, training=False)
 
 
 	def get_name(self):
 		return "translate"
+
+
 
 
 

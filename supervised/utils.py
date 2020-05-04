@@ -30,7 +30,6 @@ def convert_batch_to_tokens(batch, max_sequence, device, sp, embeddings=None):
 
 		padded = pad_sequence(token_lists[i], batch_first=True)
 		packed = pack_padded_sequence(padded, flipped_lengths_list[i], batch_first=True, enforce_sorted=False)
-
 		token_lists[i] = packed
 
 	if len(token_lists) == 1:
@@ -75,7 +74,7 @@ def load_indices(file_path):
 				test_idxs.append(int(line.strip(" \n")))
 	return train_idxs, val_idxs, test_idxs
 
-def dump_indices(file_path, train_idxs, val_idxs, test_idxs):
+def dump_indices(file_path, train_idxs, val_idxs):
 
 	with open(file_path, "w") as f:
 		print("train", file=f)
@@ -86,9 +85,12 @@ def dump_indices(file_path, train_idxs, val_idxs, test_idxs):
 		for idx in val_idxs:
 			print(idx, file=f)
 
-		print("test", file=f)
-		for idx in test_idxs:
-			print(idx, file=f)
+def load_all_templates():
+	templates = []
+	with open("../walkthroughs/all_templates") as f:
+		for line in f.readlines():
+			templates.append(line.rstrip(" \n"))
+	return templates
 
 def create_templates_list(rom_paths, additional_templates_path=None):
 

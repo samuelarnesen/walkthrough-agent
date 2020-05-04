@@ -1,5 +1,5 @@
 ##https://www.walkthroughking.com/text/zork2.aspx##
-##http://www.gameboomers.com/wtcheats/pcZz/Zork2.htm##
+http://www.gameboomers.com/wtcheats/pcZz/Zork2.htm
 
 Get the sword and lantern (special note - turn off your light sources in this game when you don't need them), and go south, south, south, southwest to the Shallow Ford. Turn on your lantern, then continue south, southeast to the North End of the Garden. Enter the gazebo, get all items on the table, and leave again. Go back to the Shallow Ford (north, northeast) and fill the teapot with water. Now head south, southwest, southwest, and you will be in the Carousel Room. Drop the letter opener, newspaper, place mat, matchbook and sword. This room spins you around so you don't know which way you have exited. You want to end up going southeast to the Riddle Room, but if you don't make it, head back to the Carousel Room and try a different direction (try northeast to get back and then southeast again).
 
@@ -133,8 +133,7 @@ Go southwest into the Cobwebby room to get the string. Go back northeast and get
 >put newspaper in receptacle
 >light match
 >light newspaper with match
->wait
->wait
+>repeat wait until reach Narrow Ledge (2)
 >land
 >tie wire to hook
 >exit basket
@@ -148,10 +147,7 @@ Open the purple book, then take the stamp. Now go back north and get into the ba
 >go north
 >climb into basket
 >untie wire
->wait
->wait
->wait
->wait
+>repeat wait until reach Wide Ledge (4)
 >land
 >tie wire to hook
 >exit basket
@@ -170,12 +166,7 @@ Put the string in the brick, then put the brick in the hole in the box. Light a 
 >climb into basket
 >untie wire
 >close receptacle
->wait
->wait
->wait
->wait
->wait
->wait
+>repeat wait until reach Volcano Bottom (6)
 >exit basket
 >take stamp
 >go north
@@ -221,19 +212,8 @@ Walk east, east, and north to the Dragon's Lair. Talk to the princess and wait u
 >go north
 >talk to princess
 >wait
->follow princess
->follow princess
->follow princess
->follow princess
->follow princess
->follow princess
->follow princess
->follow princess
->follow princess
->follow princess
->follow princess
->wait
->wait
+>repeat follow princess until reach gazebo (11)
+>repeat wait until unicorn appears (2)
 >drop rose
 >exit gazebo
 >go south

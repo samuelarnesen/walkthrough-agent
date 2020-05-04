@@ -110,6 +110,8 @@ class TimeAttender(Attender):
 			previous_attention[:, 0] = torch.ones([batch_size])
 			previous_attention.requires_grad_()
 
+		if encoder_outputs.size(0) != previous_attention.size(1):
+			encoder_outputs = torch.cat([encoder_outputs, torch.zeros(previous_attention.size(1) - encoder_outputs.size(0), encoder_outputs.size(1), encoder_outputs.size(2)).requires_grad_()])
 
 		weights = self.get_non_normalized_weights(encoder_outputs, state)
 		adjusted_previous_weights = F.relu(self.time_attention(previous_attention.unsqueeze(1)).squeeze(1))
@@ -117,6 +119,9 @@ class TimeAttender(Attender):
 			mask = generate_masks(previous_attention, sentence_lengths)
 			adjusted_previous_weights *= mask
 		previous_attention_probs = adjusted_previous_weights / torch.sum(adjusted_previous_weights, dim=1).unsqueeze(1)
+
+		if weights.size(1) < previous_attention_probs.size(1):
+			weights = torch.cat([weights, torch.zeros(batch_size, previous_attention_probs.size(1) - weights.size(1)).requires_grad_()], dim=1)
 
 		adjusted_weights = previous_attention_probs * F.softmax(weights, dim=1)
 		normalized_weights_tensor = adjusted_weights / torch.sum(adjusted_weights, dim=1).unsqueeze(dim=1)

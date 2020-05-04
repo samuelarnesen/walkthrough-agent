@@ -1,6 +1,3 @@
-##https://www.walkthroughking.com/text/zork.aspx##
-##http://steel.lcc.gatech.edu/~marleigh/zork/transcript.html##
-
 Open the mailbox and read the leaflet - wow, cool intro! Your aim at the start is to get into the house. Drop the leaflet and then head south, then east. Open the window and enter the house. Head west from the kitchen into the living room. Get the lantern, then push the rug to reveal a trap door. Open the trap door, turn on the lantern and go down (the door is barred behind you). Special note - turn off your light sources in this game when you don't need them.
 
 >open mailbox
@@ -39,7 +36,7 @@ Head south, then east to the Gallery. Take the painting and go north. Go upstair
 Go north into the Troll Room, and "kill troll with sword" (several times if necessary). Now you can drop the sword, and head east, east, southeast, east - you are now in the Dome room. Tie the rope to the railing, then climb down into the Torch room. Go south, then east and take the coffin. Go back west, then south to the Altar. Pray.
 
 >go north
->kill troll with sword
+>repeat kill troll with sword until troll dies (1)
 >drop sword
 >go east
 >go east
@@ -222,7 +219,7 @@ Head east into the Shaft room. Put the torch into the basket and light your lant
 >put diamond in case
 >put bracelet in case
 
-Turn on the lantern and go down yet again. Go north, east, north and northeast to Reservoir South. Thanks to your dam work earlier, you can go north and get the trunk of jewels. Go north once more to get the air pump, and one last time to find the crystal trident. Drop the torch, and then go back to Reservoir South (south, south, south), then head east twice to reach the Dam Base. Inflate the piece of plastic with the air pump. Drop the pump and get inside the boat. Launch the boat and wait until you see the buoy. Take it and go east to the beach. Get out of the boat and take the shovel, before heading northeast to the Sandy Cave.
+Turn on the lantern and go down yet again. Go north, east, north and northeast to Reservoir South. Thanks to your dam work earlier, you can go north and get the trunk of jewels. Go north once more to get the air pump, and one last time to find the crystal trident. Drop the torch, and then go back south until you reach Reservoir South, then head east twice to reach the Dam Base. Inflate the piece of plastic with the air pump. Drop the pump and get inside the boat. Launch the boat and wait until you see the buoy. Take it and go east to the beach. Get out of the boat and take the shovel, before heading northeast to the Sandy Cave.
 
 >turn on lamp
 >go down
@@ -239,19 +236,14 @@ Turn on the lantern and go down yet again. Go north, east, north and northeast t
 >take trident
 >drop torch
 >take trident
->go south
->go south
->go south
+>repeat go south until reach Reservoir South (3)
 >go east
 >go east
 >inflate plastic with pump
 >drop pump
 >go in boat
 >launch boat
->wait
->wait
->wait
->wait
+>repeat wait until reach buoy (4)
 >take buoy
 >go east
 >leave boat
@@ -261,10 +253,7 @@ Turn on the lantern and go down yet again. Go north, east, north and northeast t
 
 Dig until you find the scarab. Drop the shovel and take the scarab, then go back southwest. Drop the buoy and open it - take the emerald and garlic. Continue south twice to Aragain Falls and cross the rainbow. Turn off the lantern and go southwest to the Canyon Bottom. Head back to the house (up, up, northwest, west, west, west). Put your treasures in the case.
 
->dig sand with shovel
->dig sand with shovel
->dig sand with shovel
->dig sand with shovel
+>repeat dig sand with shovel until find scarab (4)
 >drop shovel
 >take scarab
 >go southwest
@@ -328,10 +317,7 @@ Go east twice then north twice. Wait before you climb the tree, then take the eg
 Go upstairs and strike the thief with the knife. If you drop the knife, pick it up and keep striking the thief. Get all the treasure (including the egg - you may need to drop the stiletto and knife), then go down, northwest, south, west, up, down and northeast to get to the Grating room. Unlock and open the grate, then go up to the clearing. Go south and climb the tree again. Wind up the canary, and a songbird will drop a present for you. Climb down and take the bauble (you may need to drop the garlic), then return to the living room (south, east, west, west). Put all the treasure in the case.
 
 >go up
->strike thief with knife
->strike thief with knife
->strike thief with knife
->strike thief with knife
+>repeat strike thief with knife until thief dies (4)
 >take all
 >go down
 >go northwest

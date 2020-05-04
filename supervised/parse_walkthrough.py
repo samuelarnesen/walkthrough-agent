@@ -89,6 +89,7 @@ class SuperWalkthrough:
 		self.actions = []
 		self.descriptions = []
 		self.wt = []
+
 		self.section_num = 0 # for iterator
 		self.internal_num = -1 # for iterator
 		self.start = True # for iterator
@@ -119,7 +120,6 @@ class SuperWalkthrough:
 			total_description = self.observations[-1] + " | " + inventories_str + \
 					" | " + self.initial_observations[-1] + " | " + self.actions[-1]
 
-			#if len(self.descriptions[-1]) == len(sections[len(self.descriptions) - 1]["List"]):
 			if start:
 				self.descriptions.append([])
 				self.number_of_sections += 1
@@ -150,6 +150,7 @@ class SuperWalkthrough:
 			counter = 0
 			for i, section in enumerate(sections):
 				for j, action in enumerate(section["List"]):
+
 					initial_observation, _, _, _ = env.step(action)
 
 					items = env.get_inventory()
@@ -160,7 +161,6 @@ class SuperWalkthrough:
 							if action not in self.valid_actions[-1]:
 								self.valid_actions[-1].append(action)
 							print(counter, "\t", self.valid_actions[-1])
-
 
 						# gets all the objects
 						objs = env.identify_interactive_objects(initial_observation)
@@ -192,12 +192,15 @@ class SuperWalkthrough:
 	def get_state_descriptions(self):
 		return self.states_in_order
 
+	def get_state_descriptions_by_section(self):
+		return self.descriptions
+
 	def get_instructions(self):
 		sections = []
 		for ind_wt in self.wt:
 			for section in ind_wt.get_sections():
 				sections.append(section)
-		return sections
+		return sections		
 
 	def get_actions(self):
 		return self.actions[1:]
@@ -210,7 +213,6 @@ class SuperWalkthrough:
 		return len(sections)
 
 	def __iter__(self):
-		# potentially add resets here
 		self.section_num = 0 
 		self.internal_num = -1 
 		self.start = True
@@ -227,7 +229,6 @@ class SuperWalkthrough:
 
 		wt = self.wt[self.wt_num]
 		section = wt.get_section(internal_section_num)
-		#print(internal_section_num)
 		self.internal_num = (self.internal_num + 1) % len(section["List"])
 
 		if self.internal_num == 0 and not self.start:
@@ -272,7 +273,6 @@ class SuperWalkthrough:
 
 			yield pairs
 
-
 class Walkthrough_Dataset(Dataset):
 
 	def __init__(self, wt_filenames=None, rom_paths=None, spm_path=None):
@@ -282,6 +282,7 @@ class Walkthrough_Dataset(Dataset):
 		self.sp = None
 		self.device = "cuda" if torch.cuda.is_available() else "cpu"
 		self.walkthroughs = []
+		self.wt_idxs = []
 
 		if spm_path != None:
 			self.sp = spm.SentencePieceProcessor()
@@ -294,10 +295,11 @@ class Walkthrough_Dataset(Dataset):
 				rom_paths = [rom_paths]
 
 			for wt_filename, rom_path in zip(wt_filenames, rom_paths):
+				self.wt_idxs.append(len(self.actions))
 
 				super_wt = SuperWalkthrough(wt_filename, rom_path)
 				self.walkthroughs.append(super_wt)
-				for state_section, instruction_section in zip(super_wt.get_state_descriptions(), super_wt.get_instructions()):
+				for state_section, instruction_section in zip(super_wt.get_state_descriptions_by_section(), super_wt.get_instructions()):
 					for state, action in zip(state_section, instruction_section["List"]):
 						self.states.append(state)
 						self.instructions.append(instruction_section["Text"])
@@ -331,5 +333,81 @@ class Walkthrough_Dataset(Dataset):
 
 		return split_wtd
 
+	def split_off_final_wt(self):
+		return self.split(range(self.wt_idxs[-1])), self.split(range(self.wt_idxs[-1], len(self)))
 
+
+class LinkedWalkthrough:
+
+	def __init__(self, swt, text_path):
+		swt = copy.deepcopy(swt)
+		wt = Walkthrough(text_path)
+
+		self.total_list = []
+		self.repeaters = []
+		self.length = len(swt)
+
+		swt_idx = 0
+		swt_actions = swt.get_actions()
+		swt_states = swt.get_state_descriptions()
+
+		for i, section in enumerate(wt.get_sections()):
+			current_instruction = section["Text"]
+			for j, action in enumerate(section["List"]):
+
+				act_to_use = action
+				current_repeater = None
+				num_repeats = 1
+				if action != swt_actions[swt_idx]:
+					repeat_match = re.match("repeat (.*) until (.*) \((\d+)\)", action)
+					if repeat_match == None:
+						print("BROKEN: ", action, "\t", swt_actions[swt_idx])
+						sys.exit()
+					assert(repeat_match != None)
+					act_to_use = repeat_match.group(1)
+					terminal_condition = repeat_match.group(2)
+					num_repeats = int(repeat_match.group(3))
+					current_repeater = Repeater(action=act_to_use, num_repeats=num_repeats, terminal_condition=terminal_condition)
+
+				while num_repeats > 0:
+					if current_repeater != None:
+						current_repeater.states.append(swt_states[swt_idx])
+						assert(len(current_repeater.states) <= current_repeater.num_repeats)
+						#step_instruction, step_state, step_action, step_start
+						if num_repeats == current_repeater.num_repeats:
+							self.total_list.append([current_instruction, swt_states[swt_idx], act_to_use, j==0])
+					else:
+						self.total_list.append([current_instruction, swt_states[swt_idx], act_to_use, j==0])
+					swt_idx += 1
+					num_repeats -= 1
+
+				if current_repeater != None:
+					current_repeater.states.append(swt_states[swt_idx]) # add the first legit one
+					self.repeaters.append(current_repeater)
+
+	def __len__(self):
+		return self.length
+
+	def __iter__(self):
+		self.idx = -1
+		return self
+
+	def __next__(self):
+		if self.idx >= len(self.total_list) - 1:
+			raise StopIteration
+		self.idx += 1
+		return self.total_list[self.idx]
+
+
+# utility class for sequences that repeat
+class Repeater:
+	def __init__(self, action="", num_repeats=0, terminal_condition="", states=None):
+		self.action = action
+		self.num_repeats = num_repeats
+		self.terminal_condition = terminal_condition
+		self.states = states if states != None else []
+
+	def __str__(self):
+		return "Action: {}\nRepeats: {}\nTerminal Condition: {}\nStates:\n\n{}".format(self.action, \
+			self.num_repeats, self.terminal_condition, "\n\n".join(self.states))
 
